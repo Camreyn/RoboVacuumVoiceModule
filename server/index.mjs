@@ -669,11 +669,22 @@ function sendJson(req, res, body, status, allowedOrigin, cookie) {
 
 function setCors(req, res, allowedOrigin) {
   const origin = req.headers.origin;
-  res.setHeader("Access-Control-Allow-Origin", origin === allowedOrigin ? origin : allowedOrigin);
+  const corsOrigin = isAllowedLocalOrigin(origin) ? origin : allowedOrigin;
+  res.setHeader("Access-Control-Allow-Origin", corsOrigin);
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "content-type");
   res.setHeader("Vary", "Origin");
+}
+
+function isAllowedLocalOrigin(origin) {
+  if (!origin) return false;
+  try {
+    const url = new URL(origin);
+    return ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) || origin === DEFAULT_ORIGIN;
+  } catch {
+    return false;
+  }
 }
 
 function redact(value) {

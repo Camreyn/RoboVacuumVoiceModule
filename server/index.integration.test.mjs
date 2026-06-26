@@ -13,6 +13,22 @@ afterEach(() => {
 });
 
 describe("local Dreame API integration", () => {
+
+  it("allows built frontend localhost origins on alternate ports", async () => {
+    await withServer(
+      {
+        clientFactory: () => ({ login: async () => ({ status: "authenticated" }) }),
+      },
+      async ({ baseUrl }) => {
+        const response = await fetch(`${baseUrl}/api/devices`, {
+          headers: { origin: "http://localhost:5175" },
+        });
+
+        expect(response.status).toBe(401);
+        expect(response.headers.get("access-control-allow-origin")).toBe("http://localhost:5175");
+      },
+    );
+  });
   it("returns captcha-required login responses", async () => {
     await withServer(
       {
