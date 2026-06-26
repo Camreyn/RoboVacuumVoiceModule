@@ -99,7 +99,7 @@ export function App() {
 
     setAuthState("two_factor");
     setTwoFactorDestination(result.destination);
-    setStatus({ tone: "neutral", text: "2FA code sent" });
+    setStatus({ tone: "neutral", text: "Verification required" });
   }
 
   async function handleLogout() {
@@ -193,7 +193,7 @@ export function App() {
         <form className="panel auth-panel" onSubmit={handleLogin}>
           <div className="panel-title">
             <ShieldCheck aria-hidden="true" />
-            <h2>Dreame account</h2>
+            <h2>Dreamehome account</h2>
           </div>
           <label>
             Email or phone
@@ -216,7 +216,7 @@ export function App() {
               />
             </label>
             <label>
-              Region
+              Cloud region
               <input
                 disabled={busyAction === "login" || isAuthenticated}
                 onChange={(event) => setCredentials((current) => ({ ...current, country: event.target.value.toLowerCase() }))}

@@ -3,10 +3,20 @@ import {
   arc4,
   createVoiceInstallPayload,
   generateEncParams,
+  hashDreamePassword,
+  makeDreameRlc,
   normalizeDevice,
+  normalizeDreameRegion,
+  regionForCountry,
 } from "./index.mjs";
 
 describe("local Dreame API helpers", () => {
+  it("builds Dreamehome auth crypto fields", () => {
+    expect(hashDreamePassword("password")).toBe("584f291aa7759cb88f281bcafab1c5ba");
+    expect(makeDreameRlc("us", "en", "GB")).toBe("JUC3ZcGzvVewBA2Uu593LA==");
+    expect(normalizeDreameRegion("USA")).toBe("us");
+    expect(regionForCountry("CN", "eu")).toBe("cn");
+  });
   it("normalizes Dreame vacuum records and redacts device tokens", () => {
     expect(
       normalizeDevice({

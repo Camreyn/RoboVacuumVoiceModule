@@ -24,7 +24,7 @@ The original Cloudflare Worker/Mindsolo-compatible API flow has been retired in 
    npm run local
    ```
 
-4. Open `http://localhost:5175`, sign in with your Dreame/Xiaomi account, find the X40, refresh voice status, and upload a voice-pack file.
+4. Open `http://localhost:5175`, sign in with your Dreamehome account, find the X40, refresh voice status, and upload a voice-pack file.
 
 Fallback development commands:
 
@@ -55,7 +55,7 @@ $env:PUBLIC_FILE_BASE_URL='http://YOUR_LAN_IP:8787'; npm run api:dev
 
 Use this sequence before treating send mode as stable:
 
-1. In default discovery mode, confirm login, captcha, and 2FA work locally.
+1. In default discovery mode, confirm Dreamehome password login works locally.
 2. Confirm device discovery returns the X40 and the expected model/device id.
 3. Refresh voice status and confirm the app reads `siid=7`, `piid=2..4` values.
 4. Upload a known-good voice pack and confirm the returned `fileUrl` is reachable from another device on the same LAN.
@@ -65,6 +65,7 @@ Use this sequence before treating send mode as stable:
 ## Important implementation notes
 
 - Credentials are held only in the local Node process memory.
+- Login uses Dreamehome cloud OAuth directly; the old Xiaomi/Mi Home login flow is not used at runtime.
 - Uploaded voice packs are stored in the OS temp directory under `dreame-voice-packs`.
 - Device tokens and sensitive session fields are redacted from API responses.
 - The candidate Dreame direct command uses the X40 voice service properties exposed as `siid=7` / `piid=2..4`; this still needs a real-device confirmation pass before treating `send` mode as production-safe.

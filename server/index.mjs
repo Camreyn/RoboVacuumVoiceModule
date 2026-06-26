@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -172,261 +172,223 @@ export class DreameCloudClient {
   constructor({ username, password, country }) {
     this.username = username;
     this.password = password;
-    this.country = country;
-    this.clientId = generateClientId();
-    this.cookieJar = new CookieJar();
-    this.userAgent = `Android-7.1.1-1.0.0-ONEPLUS A3010-136-${this.clientId} APP/xiaomi.smarthome APPV/62830`;
-    this.locale = Intl.DateTimeFormat().resolvedOptions().locale || "en-US";
-    this.timezone = formatTimezone();
-    this.sign = null;
-    this.ssecurity = null;
-    this.userId = null;
-    this.serviceToken = null;
-    this.location = null;
-    this.verificationUrl = null;
-    this.verificationDest = null;
-    this.captchaIck = null;
-    this.captchaImage = null;
+    this.region = normalizeDreameRegion(country || "eu");
+    this.accountCountry = "GB";
+    this.accessToken = null;
+    this.refreshToken = null;
+    this.expiresAt = 0;
+    this.uid = null;
   }
 
-  async login({ captchaCode } = {}) {
-    if (!(await this.loginStep1())) throw new HttpError("Unable to start Dreame/Xiaomi login.", 502);
-    const step2 = await this.loginStep2({ captchaCode });
-    if (step2.status !== "continue") return step2;
-    await this.loginStep3();
+  async login() {
+    const body = await this.passwordLogin();
+    this.applyTokenResponse(body);
+    const deviceRegion = regionForCountry(this.accountCountry, this.region);
+    if (deviceRegion !== this.region) this.region = deviceRegion;
     return { status: "authenticated" };
   }
 
-  async loginStep1() {
-    const response = await this.fetchWithCookies(
-      "https://account.xiaomi.com/pass/serviceLogin?sid=xiaomiio&_json=true",
-      { headers: this.loginHeaders() },
-    );
-    if (!response.ok) return false;
-    const data = parseXiaomiJson(await response.text());
-    this.sign = data._sign || this.sign;
-    this.userId = data.userId || this.userId;
-    this.ssecurity = data.ssecurity || this.ssecurity;
-    this.location = data.location || this.location;
-    return true;
-  }
-
-  async loginStep2({ captchaCode } = {}) {
-    const data = new URLSearchParams({
-      user: this.username,
-      hash: createHash("md5").update(this.password).digest("hex").toUpperCase(),
-      callback: "https://sts.api.io.mi.com/sts",
-      sid: "xiaomiio",
-      qs: "%3Fsid%3Dxiaomiio%26_json%3Dtrue",
-      _sign: this.sign || "",
+  async passwordLogin() {
+    const response = await this.dreamePost("/dreame-auth/oauth/token", {
+      data: {
+        grant_type: "password",
+        username: this.username,
+        password: hashDreamePassword(this.password),
+        scope: "all",
+        platform: "IOS",
+        type: "account",
+        country: this.accountCountry,
+        lang: "en",
+      },
+      auth: false,
     });
-
-    const url = new URL("https://account.xiaomi.com/pass/serviceLoginAuth2");
-    url.searchParams.set("_json", "true");
-    const cookies = {};
-    if (captchaCode && this.captchaIck) {
-      data.set("captCode", captchaCode);
-      url.searchParams.set("_dc", String(Date.now()));
-      cookies.ick = this.captchaIck;
-    }
-
-    const response = await this.fetchWithCookies(url, { method: "POST", headers: this.loginHeaders(), body: data, cookies });
-    if (!response.ok) throw new HttpError("Dreame/Xiaomi login request failed.", 502);
-    const payload = parseXiaomiJson(await response.text());
-
-    if (payload.location) {
-      this.userId = payload.userId || this.userId;
-      this.ssecurity = payload.ssecurity || this.ssecurity;
-      this.location = payload.location;
-      return { status: "continue" };
-    }
-
-    if (payload.notificationUrl) {
-      const sent = await this.send2faCode(absoluteAccountUrl(payload.notificationUrl));
-      if (!sent) throw new HttpError("Dreame/Xiaomi requires 2FA, but the code could not be sent.", 401);
-      return { status: "2fa_required", destination: this.verificationDest };
-    }
-
-    if (payload.captchaUrl) {
-      await this.loadCaptcha(absoluteAccountUrl(payload.captchaUrl));
-      return { status: "captcha_required", captchaImage: this.captchaImage };
-    }
-
-    throw new HttpError(payload.desc || payload.description || "Dreame/Xiaomi login failed.", 401);
+    return response.body;
   }
 
-  async loginStep3() {
-    if (!this.location) throw new HttpError("Dreame/Xiaomi login did not return a token location.", 401);
-    const response = await this.fetchWithCookies(this.location, { headers: this.loginHeaders() });
-    if (!response.ok || !this.cookieJar.get("serviceToken")) {
-      throw new HttpError("Dreame/Xiaomi service token was not returned.", 401);
-    }
-    this.serviceToken = this.cookieJar.get("serviceToken");
-    return true;
-  }
-
-  async loadCaptcha(url) {
-    const response = await this.fetchWithCookies(url, { headers: { "User-Agent": this.userAgent } });
-    this.captchaIck = this.cookieJar.get("ick");
-    const bytes = Buffer.from(await response.arrayBuffer());
-    this.captchaImage = `data:${response.headers.get("content-type") || "image/jpeg"};base64,${bytes.toString("base64")}`;
-  }
-
-  async send2faCode(verificationUrl) {
-    this.verificationUrl = verificationUrl;
-    await this.fetchWithCookies(verificationUrl, { headers: { "User-Agent": this.userAgent } });
-    const context = new URL(verificationUrl).searchParams.get("context");
-    if (!context) return false;
-
-    const identity = await this.fetchWithCookies(
-      `https://account.xiaomi.com/identity/list?sid=xiaomiio&context=${encodeURIComponent(context)}&_locale=${encodeURIComponent(this.locale)}`,
-    );
-    const identityData = parseXiaomiJson(await identity.text());
-    const identitySession = this.cookieJar.get("identity_session");
-    if (!identity.ok || !identitySession) return false;
-
-    const flag = identityData.options?.includes(4) ? 4 : identityData.options?.includes(8) ? 8 : identityData.flag || 4;
-    const kind = flag === 4 ? "Phone" : "Email";
-    const verify = await this.fetchWithCookies(
-      `https://account.xiaomi.com/identity/auth/verify${kind}?_flag=${flag}&_json=true&sid=xiaomiio&context=${encodeURIComponent(context)}&mask=0&_locale=${encodeURIComponent(this.locale)}`,
-    );
-    const verifyData = parseXiaomiJson(await verify.text());
-    this.verificationDest = verifyData.maskedPhone || verifyData.maskedEmail || "masked destination";
-
-    const send = await this.fetchWithCookies(
-      `https://account.xiaomi.com/identity/auth/send${kind}Ticket?_dc=${Date.now()}&sid=xiaomiio&context=${encodeURIComponent(context)}&mask=0&_locale=${encodeURIComponent(this.locale)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ retry: "0", icode: "", _json: "true", ick: this.cookieJar.get("ick") || "" }),
-      },
-    );
-    const sendData = parseXiaomiJson(await send.text());
-    return send.ok && sendData.code === 0;
-  }
-
-  async verifyCode(code) {
-    if (!this.verificationUrl) throw new HttpError("No pending 2FA challenge is active.", 400);
-    const context = new URL(this.verificationUrl).searchParams.get("context");
-    if (!context) throw new HttpError("2FA challenge is missing context.", 400);
-
-    const identity = await this.fetchWithCookies(
-      `https://account.xiaomi.com/identity/list?sid=xiaomiio&context=${encodeURIComponent(context)}&_locale=${encodeURIComponent(this.locale)}`,
-    );
-    const identityData = parseXiaomiJson(await identity.text());
-    const flag = identityData.options?.includes(4) ? 4 : identityData.options?.includes(8) ? 8 : identityData.flag || 4;
-    const kind = flag === 4 ? "Phone" : "Email";
-    const response = await this.fetchWithCookies(
-      `https://account.xiaomi.com/identity/auth/verify${kind}?_flag=${flag}&_json=true&sid=xiaomiio&context=${encodeURIComponent(context)}&mask=0&_locale=${encodeURIComponent(this.locale)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ _flag: String(flag), ticket: code, trust: "false", _json: "true", ick: this.cookieJar.get("ick") || "" }),
-      },
-    );
-    const data = parseXiaomiJson(await response.text());
-    const location = data.location || response.headers.get("location");
-    if (!response.ok || data.code !== 0 || !location) {
-      throw new HttpError(data.description || data.message || "2FA verification failed.", 401);
-    }
-    this.location = location;
-    await this.loginStep3();
-    return { status: "authenticated" };
+  async verifyCode() {
+    throw new HttpError("Dreamehome email-code verification is not wired yet. Add a password to your Dreamehome account and sign in with that password.", 400);
   }
 
   async getDevices() {
-    const home = await this.apiCall("v2/homeroom/gethome", {
-      fg: true,
-      fetch_share: true,
-      fetch_share_dev: true,
-      limit: 100,
-      app_ver: 7,
-    });
-    const devices = [];
-    const homes = new Map();
-    for (const item of home?.result?.homelist || []) homes.set(String(item.id), this.userId);
-    for (const [homeId, homeOwner] of homes) {
-      const response = await this.apiCall("v2/home/home_device_list", {
-        home_id: Number(homeId),
-        home_owner: homeOwner,
-        limit: 100,
-        get_split_device: true,
-        support_smart_home: true,
-      });
-      devices.push(...(response?.result?.device_info || []));
-    }
-    const fallback = await this.apiCall("home/device_list", { getVirtualModel: false, getHuamiDevices: 0 });
-    devices.push(...(fallback?.result?.list || []));
-    return dedupeDevices(devices);
+    await this.ensureValidToken();
+    const response = await this.dreamePost("/dreame-user-iot/iotuserbind/device/listV2");
+    const raw = response.body?.data ?? response.body?.result ?? [];
+    return dedupeDevices(extractDreameDeviceRecords(raw));
   }
 
   async getVoiceProperties(deviceId) {
-    const result = await this.send(deviceId, "get_properties", VOICE_PROPERTIES);
+    const result = await this.send(deviceId, "get_properties", VOICE_PROPERTIES.map(({ siid, piid }) => ({ siid, piid, did: deviceId })));
     return { raw: result, properties: mapVoiceProperties(result) };
   }
 
   async sendVoiceInstallCommand(deviceId, fileRecord) {
     const payload = createVoiceInstallPayload(fileRecord);
     return this.send(deviceId, "set_properties", [
-      { did: "7.4", siid: 7, piid: 4, value: JSON.stringify(payload) },
+      { did: deviceId, siid: 7, piid: 4, value: JSON.stringify(payload) },
     ]);
   }
 
   async send(deviceId, method, params) {
-    const response = await this.apiCall(`v2/home/rpc/${deviceId}`, { method, params });
-    if (!response || !("result" in response)) throw new HttpError(`Dreame RPC ${method} did not return a result.`, 502);
-    return response.result;
+    await this.ensureValidToken();
+    const body = await this.sendCommand(deviceId, method, params);
+    return extractDreameRpcResult(body);
   }
 
-  async apiCall(path, params) {
-    if (!this.serviceToken || !this.ssecurity) throw new HttpError("Dreame session is not authenticated.", 401);
-    const url = `${this.apiBaseUrl()}/${path}`;
-    const fields = generateEncParams(url, "POST", { data: JSON.stringify(params) }, this.ssecurity);
-    const response = await this.fetchWithCookies(url, {
-      method: "POST",
-      headers: {
-        "User-Agent": this.userAgent,
-        "Accept-Encoding": "identity",
-        "x-xiaomi-protocal-flag-cli": "PROTOCAL-HTTP2",
-        "Content-Type": "application/x-www-form-urlencoded",
-        "MIOT-ENCRYPT-ALGORITHM": "ENCRYPT-RC4",
+  async sendCommand(deviceId, method, params, retry = true) {
+    const response = await this.dreamePost("/dreame-iot-com-10000/device/sendCommand", {
+      json: {
+        did: deviceId,
+        id: 1,
+        data: {
+          did: deviceId,
+          id: 1,
+          method,
+          params,
+        },
       },
-      cookies: {
-        userId: String(this.userId),
-        yetAnotherServiceToken: this.serviceToken,
-        serviceToken: this.serviceToken,
-        locale: this.locale,
-        timezone: this.timezone,
-        is_daylight: "0",
-        dst_offset: "0",
-        channel: "MI_APP_STORE",
-      },
-      body: new URLSearchParams(fields),
+      throwOnAuth: false,
     });
-    const encrypted = await response.text();
-    if (!response.ok) throw new HttpError(`Dreame API request failed with HTTP ${response.status}.`, 502);
-    const decoded = decryptRc4(signedNonce(fields._nonce, this.ssecurity), encrypted);
-    return JSON.parse(decoded);
+
+    if (response.status === 401 && retry && this.refreshToken) {
+      await this.refreshAccessToken();
+      return this.sendCommand(deviceId, method, params, false);
+    }
+
+    if (response.status === 401) throw new HttpError("Dreamehome session expired. Sign in again.", 401);
+    if (response.status !== 200) throw dreameHttpError(response, `Dreame RPC ${method} failed`);
+
+    const code = response.body?.code;
+    if (code === -1 || code === -9999) throw new HttpError(`Device ${deviceId} appears offline.`, 409);
+    return response.body;
   }
 
-  apiBaseUrl() {
-    return `https://${this.country === "cn" ? "" : `${this.country}.`}api.io.mi.com/app`;
+  async ensureValidToken() {
+    if (!this.accessToken) throw new HttpError("Dreamehome session is not authenticated.", 401);
+    if (Date.now() + 60_000 < this.expiresAt) return;
+    if (!this.refreshToken) return;
+    await this.refreshAccessToken();
   }
 
-  loginHeaders() {
-    return { "User-Agent": this.userAgent, "Content-Type": "application/x-www-form-urlencoded" };
+  async refreshAccessToken() {
+    const response = await this.dreamePost("/dreame-auth/oauth/token", {
+      data: {
+        grant_type: "refresh_token",
+        refresh_token: this.refreshToken,
+      },
+      auth: false,
+      throwOnAuth: false,
+    });
+    if (response.status === 401) throw new HttpError("Dreamehome session expired. Sign in again.", 401);
+    if (response.status !== 200) throw dreameHttpError(response, "Dreamehome token refresh failed");
+    this.applyTokenResponse(response.body);
   }
 
-  async fetchWithCookies(url, init = {}) {
-    const headers = new Headers(init.headers || {});
-    const cookie = this.cookieJar.header(init.cookies);
-    if (cookie) headers.set("Cookie", cookie);
-    const response = await fetch(url, { ...init, headers });
-    this.cookieJar.store(response.headers);
-    return response;
+  applyTokenResponse(body) {
+    if (!body?.access_token) throw new HttpError(dreameErrorMessage(body, "Dreamehome login did not return an access token."), 401);
+    this.accessToken = String(body.access_token);
+    this.refreshToken = body.refresh_token ? String(body.refresh_token) : this.refreshToken;
+    this.uid = body.uid ? String(body.uid) : this.uid;
+    this.accountCountry = body.country ? String(body.country).toUpperCase() : this.accountCountry;
+    const expiresIn = Number(body.expires_in || 7200);
+    this.expiresAt = Date.now() + expiresIn * 1000;
+  }
+
+  async dreamePost(path, options = {}) {
+    const headers = this.dreameHeaders(Boolean(options.auth ?? true));
+    let body;
+
+    if (options.data) {
+      headers.set("Content-Type", "application/x-www-form-urlencoded");
+      body = new URLSearchParams(options.data);
+    }
+
+    if (options.json) {
+      headers.set("Content-Type", "application/json");
+      body = JSON.stringify(options.json);
+    }
+
+    const response = await fetch(`${this.baseUrl()}${path}`, { method: "POST", headers, body });
+    const text = await response.text();
+    const parsed = text ? parseJsonBody(text) : {};
+    const result = { status: response.status, ok: response.ok, body: parsed };
+
+    if (response.status === 401 && options.throwOnAuth !== false) {
+      throw new HttpError(dreameErrorMessage(parsed, "Dreamehome login failed."), 401);
+    }
+    if (response.status >= 500) throw dreameHttpError(result, "Dreamehome service request failed");
+    return result;
+  }
+
+  dreameHeaders(includeToken) {
+    const headers = new Headers({
+      Authorization: "Basic ZHJlYW1lX2FwcHYxOkFQXmR2QHpAU1FZVnhOODg=",
+      "Tenant-Id": "000000",
+      "Dreame-Meta": "cv=i_829",
+      "Dreame-Rlc": makeDreameRlc(this.region, "en", this.accountCountry),
+      "User-Agent": "Dreame_Smarthome/2.1.9 (iPhone; iOS 18.4.1; Scale/3.00)",
+    });
+    if (includeToken && this.accessToken) headers.set("Dreame-Auth", `bearer ${this.accessToken}`);
+    return headers;
+  }
+
+  baseUrl() {
+    return `https://${this.region}.iot.dreame.tech:13267`;
   }
 }
+export function hashDreamePassword(password) {
+  return createHash("md5").update(`${password}RAylYC%fmSKp7%Tq`).digest("hex");
+}
 
+export function makeDreameRlc(region, lang = "en", country = "GB") {
+  const cipher = createCipheriv("aes-128-ecb", Buffer.from("EETjszu*XI5znHsI"), null);
+  const encrypted = Buffer.concat([cipher.update(`${region}|${lang}|${country}`, "utf8"), cipher.final()]);
+  return encrypted.toString("base64");
+}
+
+export function normalizeDreameRegion(value) {
+  const region = String(value || "eu").trim().toLowerCase();
+  if (["eu", "us", "cn"].includes(region)) return region;
+  if (["usa", "ca", "canada"].includes(region)) return "us";
+  if (["china"].includes(region)) return "cn";
+  return "eu";
+}
+
+export function regionForCountry(country, fallback = "eu") {
+  const code = String(country || "").toUpperCase();
+  if (["US", "CA"].includes(code)) return "us";
+  if (code === "CN") return "cn";
+  return normalizeDreameRegion(fallback);
+}
+
+function extractDreameDeviceRecords(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (Array.isArray(raw?.page?.records)) return raw.page.records;
+  if (Array.isArray(raw?.records)) return raw.records;
+  return [];
+}
+
+function extractDreameRpcResult(body) {
+  const data = body?.data ?? body;
+  const result = data?.result ?? data;
+  return Array.isArray(result) ? result : result?.result ?? result;
+}
+
+function dreameHttpError(response, fallback) {
+  return new HttpError(dreameErrorMessage(response.body, `${fallback} with HTTP ${response.status}.`), response.status >= 400 && response.status < 600 ? response.status : 502);
+}
+
+function dreameErrorMessage(body, fallback) {
+  if (!body || typeof body !== "object") return fallback;
+  return String(body.msg || body.message || body.error_description || body.error || fallback);
+}
+
+function parseJsonBody(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { message: text };
+  }
+}
 export function createVoiceInstallPayload(fileRecord) {
   return {
     id: "custom",
@@ -442,13 +404,13 @@ export function normalizeDevice(device) {
   if (!device || typeof device !== "object") return null;
   const id = stringValue(device.did) || stringValue(device.id);
   const model = stringValue(device.model);
-  if (!id || !model || !model.includes("vacuum")) return null;
+  if (!id || !model || !model.toLowerCase().includes("vacuum")) return null;
   return {
     id,
     app: "dreamehome",
-    name: stringValue(device.name) || stringValue(device.device_name) || model,
+    name: stringValue(device.customName) || stringValue(device.name) || stringValue(device.device_name) || model,
     model,
-    localIp: stringValue(device.localip),
+    localIp: stringValue(device.localip) || stringValue(device.localIp) || stringValue(device.ip),
     token: device.token ? "[redacted]" : undefined,
     source: "dreame-cloud",
   };
