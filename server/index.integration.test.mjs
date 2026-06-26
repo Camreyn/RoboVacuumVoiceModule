@@ -29,6 +29,38 @@ describe("local Dreame API integration", () => {
       },
     );
   });
+  it("allows GitHub Pages origins and header sessions", async () => {
+    const fakeClient = {
+      login: async () => ({ status: "authenticated" }),
+      getDevices: async () => [{ did: "107265", model: "dreame.vacuum.r2243", name: "X40" }],
+    };
+
+    await withServer({ clientFactory: () => fakeClient }, async ({ baseUrl }) => {
+      const loginResponse = await fetch(`${baseUrl}/api/auth/login`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "https://camreyn.github.io",
+        },
+        body: JSON.stringify({ username: "user@example.com", password: "password", country: "us" }),
+      });
+      const loginPayload = await loginResponse.json();
+
+      const devicesResponse = await fetch(`${baseUrl}/api/devices`, {
+        headers: {
+          origin: "https://camreyn.github.io",
+          "x-local-session": loginPayload.sessionId,
+        },
+      });
+
+      expect(loginResponse.headers.get("access-control-allow-origin")).toBe("https://camreyn.github.io");
+      expect(loginResponse.headers.get("access-control-allow-headers")).toContain("x-local-session");
+      expect(devicesResponse.status).toBe(200);
+      await expect(devicesResponse.json()).resolves.toEqual({
+        devices: [expect.objectContaining({ id: "107265", name: "X40" })],
+      });
+    });
+  });
   it("returns captcha-required login responses", async () => {
     await withServer(
       {
@@ -45,10 +77,13 @@ describe("local Dreame API integration", () => {
 
         expect(response.status).toBe(200);
         expect(response.headers.get("set-cookie")).toContain("dvpi_local_session=");
-        await expect(response.json()).resolves.toEqual({
-          status: "captcha_required",
-          captchaImage: "data:image/jpeg;base64,abc",
-        });
+        await expect(response.json()).resolves.toEqual(
+          expect.objectContaining({
+            status: "captcha_required",
+            captchaImage: "data:image/jpeg;base64,abc",
+            sessionId: expect.any(String),
+          }),
+        );
       },
     );
   });
@@ -71,7 +106,9 @@ describe("local Dreame API integration", () => {
 
       expect(verifyResponse.status).toBe(200);
       expect(fakeClient.verifyCode).toHaveBeenCalledWith("123456");
-      await expect(verifyResponse.json()).resolves.toEqual({ status: "authenticated", code: "123456" });
+      await expect(verifyResponse.json()).resolves.toEqual(
+        expect.objectContaining({ status: "authenticated", code: "123456", sessionId: expect.any(String) }),
+      );
     });
   });
 

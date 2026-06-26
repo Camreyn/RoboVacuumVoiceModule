@@ -16,10 +16,12 @@ import {
   clearSession,
   DeviceSummary,
   findDevices,
+  getApiBaseUrl,
   getVoiceProperties,
   installVoicePack,
   InstallResult,
   login,
+  setApiBaseUrl as saveApiBaseUrl,
   verifyTwoFactor,
   VoicePropertiesResponse,
 } from "./api";
@@ -51,6 +53,7 @@ export function App() {
   const [installResult, setInstallResult] = useState<InstallResult | null>(null);
   const [status, setStatus] = useState<Status>({ tone: "neutral", text: "Ready" });
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [apiBaseUrl, setApiBaseUrlState] = useState<string>(() => getApiBaseUrl());
 
   const selectedDevice = useMemo(
     () => devices.find((device) => device.id === selectedDeviceId) ?? null,
@@ -59,6 +62,18 @@ export function App() {
   const isAuthenticated = authState === "signed_in";
   const deviceName = selectedDevice?.name || selectedDevice?.model || selectedDeviceId || "No X40 selected";
 
+  function handleApiEndpointSave(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const saved = saveApiBaseUrl(apiBaseUrl);
+    setApiBaseUrlState(saved);
+    setStatus({ tone: "success", text: "API endpoint saved" });
+  }
+
+  function handleLocalApiEndpoint() {
+    const saved = saveApiBaseUrl("http://localhost:8787");
+    setApiBaseUrlState(saved);
+    setStatus({ tone: "neutral", text: "Using local API" });
+  }
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     await runAction("login", async () => {
@@ -196,6 +211,27 @@ export function App() {
       </section>
 
       <section className="workspace">
+        <form className="panel endpoint-panel" onSubmit={handleApiEndpointSave}>
+          <div className="panel-title">
+            <KeyRound aria-hidden="true" />
+            <h2>API endpoint</h2>
+          </div>
+          <label>
+            URL
+            <input
+              autoComplete="url"
+              onChange={(event) => setApiBaseUrlState(event.target.value)}
+              placeholder="https://example.trycloudflare.com"
+              value={apiBaseUrl}
+            />
+          </label>
+          <div className="button-row">
+            <button type="submit">Save</button>
+            <button className="secondary" onClick={handleLocalApiEndpoint} type="button">
+              Local
+            </button>
+          </div>
+        </form>
         <form className="panel auth-panel" onSubmit={handleLogin}>
           <div className="panel-title">
             <ShieldCheck aria-hidden="true" />

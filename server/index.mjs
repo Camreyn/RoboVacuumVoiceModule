@@ -61,7 +61,7 @@ async function routeRequest(req, res, config) {
     const result = await client.login({ captchaCode });
     const sessionId = createSession(client, result.status === "authenticated" ? "authenticated" : "pending");
 
-    sendJson(req, res, result, 200, allowedOrigin, sessionCookie(sessionId));
+    sendJson(req, res, { ...result, sessionId }, 200, allowedOrigin, sessionCookie(sessionId));
     return;
   }
 
@@ -72,7 +72,7 @@ async function routeRequest(req, res, config) {
     const result = await session.client.verifyCode(code);
     session.state = "authenticated";
     session.updatedAt = Date.now();
-    sendJson(req, res, result, 200, allowedOrigin);
+    sendJson(req, res, { ...result, sessionId: session.id }, 200, allowedOrigin);
     return;
   }
 
@@ -579,7 +579,18 @@ async function servePack(res, jobId, fileName) {
 function publicBaseUrl(req, configuredBaseUrl) {
   if (configuredBaseUrl) return configuredBaseUrl.replace(/\/$/, "");
   if (process.env.PUBLIC_FILE_BASE_URL) return process.env.PUBLIC_FILE_BASE_URL.replace(/\/$/, "");
-  const host = req.headers.host || `localhost:${DEFAULT_PORT}`;
+
+  const forwardedHost = optionalString(req.headers["x-forwarded-host"]);
+  const host = forwardedHost || req.headers.host || `localhost:${DEFAULT_PORT}`;
+  const hostname = host.split(":")[0];
+  const isLocalHost = ["localhost", "127.0.0.1", "[::1]", "::1"].includes(hostname);
+
+  if (!isLocalHost) {
+    const forwardedProto = optionalString(req.headers["x-forwarded-proto"]);
+    const proto = forwardedProto || (optionalString(req.headers.origin).startsWith("https://") ? "https" : "http");
+    return `${proto}://${host}`.replace(/\/$/, "");
+  }
+
   const lanIp = findLanIp();
   const port = host.includes(":") ? host.split(":").pop() : String(DEFAULT_PORT);
   return `http://${lanIp || "localhost"}:${port}`;
@@ -631,7 +642,8 @@ function requireAuthenticatedSession(req, sessionTtlMs = DEFAULT_SESSION_TTL_MS)
 }
 
 function getSessionId(req) {
-  return parseCookies(req.headers.cookie || "")[COOKIE_NAME];
+  const headerSession = optionalString(req.headers["x-local-session"]);
+  return headerSession || parseCookies(req.headers.cookie || "")[COOKIE_NAME];
 }
 
 function parseCookies(header) {
@@ -664,19 +676,19 @@ function sendJson(req, res, body, status, allowedOrigin, cookie) {
 
 function setCors(req, res, allowedOrigin) {
   const origin = req.headers.origin;
-  const corsOrigin = isAllowedLocalOrigin(origin) ? origin : allowedOrigin;
+  const corsOrigin = isAllowedFrontendOrigin(origin) ? origin : allowedOrigin;
   res.setHeader("Access-Control-Allow-Origin", corsOrigin);
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "content-type");
+  res.setHeader("Access-Control-Allow-Headers", "content-type,x-local-session");
   res.setHeader("Vary", "Origin");
 }
 
-function isAllowedLocalOrigin(origin) {
+function isAllowedFrontendOrigin(origin) {
   if (!origin) return false;
   try {
     const url = new URL(origin);
-    return ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) || origin === DEFAULT_ORIGIN;
+    return ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) || url.hostname.endsWith(".github.io") || origin === DEFAULT_ORIGIN;
   } catch {
     return false;
   }

@@ -35,6 +35,25 @@ npm run dev
 
 If Vite cannot spawn `esbuild` on Windows, use `npm run build` followed by `npm run local`.
 
+
+## GitHub Pages from another PC
+
+GitHub Pages hosts only the static frontend. The Dreamehome API must still run somewhere you control, because that process holds the Dreame session and serves uploaded voice-pack files.
+
+One workable remote setup is:
+
+```sh
+npm run api:dev
+cloudflared tunnel --url http://localhost:8787
+```
+
+Then open the GitHub Pages app, paste the HTTPS tunnel URL into `API endpoint`, save it, and sign in. If the robot needs to fetch the uploaded voice pack through the same public tunnel, either leave the API behind that tunnel so it can infer the HTTPS host, or start the API with:
+
+```sh
+$env:PUBLIC_FILE_BASE_URL='https://YOUR-TUNNEL.trycloudflare.com'; npm run api:dev
+```
+
+The Pages app stores only the API endpoint and a temporary local session id in that browser. Dreame credentials still go to your API process, not to GitHub Pages.
 ## Voice-pack install mode
 
 By default the local API runs in discovery mode. It uploads the file to a temporary local URL, computes MD5 and size, reads the X40 voice-related MIOT properties, and returns the candidate command payload without sending the final write command.

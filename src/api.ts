@@ -5,10 +5,11 @@ export type LoginRequest = {
   captchaCode?: string;
 };
 
-export type LoginResponse =
+export type LoginResponse = (
   | { status: "authenticated" }
   | { status: "captcha_required"; captchaImage: string }
-  | { status: "2fa_required"; destination?: string };
+  | { status: "2fa_required"; destination?: string }
+) & { sessionId?: string };
 
 export type ApiError = {
   message: string;
@@ -64,29 +65,62 @@ export type InstallResult = {
   result?: unknown;
 };
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8787").replace(
-  /\/$/,
-  "",
-);
+const API_BASE_STORAGE_KEY = "dreame-api-base-url";
+const SESSION_STORAGE_KEY = "dreame-local-session";
+const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8787";
+
+export function getApiBaseUrl(): string {
+  return (window.localStorage.getItem(API_BASE_STORAGE_KEY) || DEFAULT_API_BASE).replace(/\/$/, "");
+}
+
+export function setApiBaseUrl(value: string): string {
+  const normalized = value.trim().replace(/\/$/, "");
+  if (normalized) {
+    window.localStorage.setItem(API_BASE_STORAGE_KEY, normalized);
+  } else {
+    window.localStorage.removeItem(API_BASE_STORAGE_KEY);
+  }
+  return getApiBaseUrl();
+}
+
+export function getLocalSessionId(): string {
+  return window.localStorage.getItem(SESSION_STORAGE_KEY) || "";
+}
+
+function setLocalSessionId(value?: string) {
+  if (value) window.localStorage.setItem(SESSION_STORAGE_KEY, value);
+}
+
+function clearLocalSessionId() {
+  window.localStorage.removeItem(SESSION_STORAGE_KEY);
+}
 
 export async function login(requestBody: LoginRequest): Promise<LoginResponse> {
-  return request<LoginResponse>("/api/auth/login", {
+  const response = await request<LoginResponse>("/api/auth/login", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(requestBody),
   });
+  setLocalSessionId(response.sessionId);
+  return response;
 }
 
 export async function verifyTwoFactor(code: string): Promise<LoginResponse> {
-  return request<LoginResponse>("/api/auth/verify-2fa", {
+  const response = await request<LoginResponse>("/api/auth/verify-2fa", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ code }),
   });
+  setLocalSessionId(response.sessionId);
+  return response;
 }
 
 export async function clearSession(): Promise<void> {
-  await request("/api/auth/session", { method: "DELETE" });
+  try {
+    await request("/api/auth/session", { method: "DELETE" });
+  } finally {
+    clearLocalSessionId();
+  }
 }
 
 export async function findDevices(): Promise<DeviceListResponse> {
@@ -108,8 +142,13 @@ export async function installVoicePack(deviceId: string, file: File): Promise<In
 }
 
 async function request<T = unknown>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const headers = new Headers(init?.headers || {});
+  const sessionId = getLocalSessionId();
+  if (sessionId) headers.set("x-local-session", sessionId);
+
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
     ...init,
+    headers,
     credentials: "include",
   });
 
