@@ -130,6 +130,16 @@ describe("local Dreame API integration", () => {
             name: "voice.pkg",
           }),
         );
+        expect(payload.diagnostics).toEqual(
+          expect.objectContaining({
+            mode: "discover",
+            publicFileBaseUrl: "http://192.168.1.50:8787",
+            fileUrl: payload.fileUrl,
+            robotFetchMethod: "GET",
+            candidateWrite: { method: "set_properties", siid: 7, piid: 4, valueType: "json-string" },
+          }),
+        );
+        expect(payload.diagnostics.readProperties).toHaveLength(3);
         expect(fakeClient.sendVoiceInstallCommand).not.toHaveBeenCalled();
       },
     );

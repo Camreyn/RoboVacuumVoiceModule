@@ -87,6 +87,7 @@ export function App() {
       setTwoFactorDestination(undefined);
       setCredentials((current) => ({ ...current, password: "", captchaCode: "", twoFactorCode: "" }));
       setStatus({ tone: "success", text: "Local session active" });
+      void handleDeviceSearch();
       return;
     }
 
@@ -134,16 +135,21 @@ export function App() {
     persistSelectedDevice(device.id);
     setVoiceStatus(null);
     setInstallResult(null);
+    void refreshVoiceStatus(device.id);
   }
 
   async function handleVoiceRefresh() {
-    if (!selectedDeviceId) {
+    await refreshVoiceStatus(selectedDeviceId);
+  }
+
+  async function refreshVoiceStatus(deviceId: string) {
+    if (!deviceId) {
       setStatus({ tone: "danger", text: "Choose a vacuum first" });
       return;
     }
 
     await runAction("voice", async () => {
-      const result = await getVoiceProperties(selectedDeviceId);
+      const result = await getVoiceProperties(deviceId);
       setVoiceStatus(result);
       setStatus({ tone: "success", text: "Voice status loaded" });
     });
@@ -346,6 +352,8 @@ function VoiceStatus({ value }: { value: VoicePropertiesResponse | null }) {
       <strong>{String(properties.voice_packet_id ?? "unknown")}</strong>
       <span>Change status</span>
       <strong>{String(properties.voice_change_status ?? "unknown")}</strong>
+      <span>Change value</span>
+      <strong>{String(properties.voice_change ?? "unknown")}</strong>
     </div>
   );
 }
@@ -363,11 +371,24 @@ function InstallSummary({ result }: { result: InstallResult }) {
           <strong>{result.md5}</strong>
         </div>
       ) : null}
+      {result.diagnostics?.mode ? (
+        <div>
+          <span>Mode</span>
+          <strong>{result.diagnostics.mode}</strong>
+        </div>
+      ) : null}
+      {result.diagnostics?.publicFileBaseUrl ? (
+        <div>
+          <span>LAN base</span>
+          <strong>{result.diagnostics.publicFileBaseUrl}</strong>
+        </div>
+      ) : null}
       {result.fileUrl ? (
         <a href={result.fileUrl} target="_blank" rel="noreferrer">
           Local pack URL
         </a>
       ) : null}
+      {result.command ? <pre>{JSON.stringify(result.command, null, 2)}</pre> : null}
     </div>
   );
 }

@@ -356,6 +356,19 @@ h2 {
   font-weight: 800;
 }
 
+.install-summary pre {
+  background: #ffffff;
+  border: 1px solid #dbe4e1;
+  border-radius: 6px;
+  color: #253330;
+  font-size: 0.78rem;
+  margin: 2px 0 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .status {
   align-items: center;
   border: 1px solid #c7d3cf;

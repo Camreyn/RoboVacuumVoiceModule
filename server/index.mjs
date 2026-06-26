@@ -1,6 +1,6 @@
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { networkInterfaces, tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -109,7 +109,9 @@ async function routeRequest(req, res, config) {
 
     if (!(file instanceof File)) throw new HttpError("Voice-pack file is required.", 400);
 
-    const record = await persistVoicePack(file, publicBaseUrl(req, config.publicFileBaseUrl));
+    const baseUrl = publicBaseUrl(req, config.publicFileBaseUrl);
+    const record = await persistVoicePack(file, baseUrl);
+    const shouldSend = shouldSendMode(config);
     const before = await client.getVoiceProperties(deviceId).catch((error) => ({ message: error.message }));
     const command = createVoiceInstallPayload(record);
     const job = {
@@ -121,11 +123,11 @@ async function routeRequest(req, res, config) {
       size: record.size,
       status: "prepared",
       command,
+      diagnostics: createVoiceJobDiagnostics(req, record, baseUrl, shouldSend),
       before,
       createdAt: Date.now(),
     };
 
-    const shouldSend = (config.voiceInstallMode || process.env.DREAME_VOICE_INSTALL_MODE || "discover") === "send";
     if (shouldSend) {
       const result = await client.sendVoiceInstallCommand(deviceId, record);
       job.status = "sent";
@@ -520,6 +522,29 @@ async function toWebRequest(req) {
   });
 }
 
+
+function shouldSendMode(config) {
+  return (config.voiceInstallMode || process.env.DREAME_VOICE_INSTALL_MODE || "discover") === "send";
+}
+
+function createVoiceJobDiagnostics(req, record, baseUrl, sendMode) {
+  return {
+    mode: sendMode ? "send" : "discover",
+    publicFileBaseUrl: baseUrl,
+    detectedLanIp: findLanIp() || null,
+    requestHost: req.headers.host || null,
+    fileUrl: record.url,
+    robotFetchMethod: "GET",
+    readProperties: VOICE_PROPERTIES.map(({ did, siid, piid, name }) => ({ did, siid, piid, name })),
+    candidateWrite: {
+      method: "set_properties",
+      siid: 7,
+      piid: 4,
+      valueType: "json-string",
+    },
+  };
+}
+
 async function persistVoicePack(file, baseUrl) {
   const jobId = randomBytes(8).toString("hex");
   const fileName = sanitizeFileName(file.name || "voice-pack.pkg");
@@ -536,9 +561,17 @@ async function servePack(res, jobId, fileName) {
   const safeJobId = jobId.replace(/[^a-f0-9]/gi, "");
   const safeFileName = sanitizeFileName(decodeURIComponent(fileName));
   const path = join(tmpdir(), "dreame-voice-packs", safeJobId, safeFileName);
+  const fileStat = await stat(path).catch(() => null);
+  if (!fileStat?.isFile()) {
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("Voice pack not found");
+    return;
+  }
+
   res.writeHead(200, {
     "Content-Type": "application/octet-stream",
     "Content-Disposition": `attachment; filename="${basename(safeFileName)}"`,
+    "Content-Length": String(fileStat.size),
   });
   createReadStream(path).pipe(res);
 }

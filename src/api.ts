@@ -38,6 +38,17 @@ export type VoicePropertiesResponse = {
   message?: string;
 };
 
+export type VoiceJobDiagnostics = {
+  mode?: "discover" | "send";
+  publicFileBaseUrl?: string;
+  detectedLanIp?: string | null;
+  requestHost?: string | null;
+  fileUrl?: string;
+  robotFetchMethod?: string;
+  readProperties?: Array<{ did: string; siid: number; piid: number; name: string }>;
+  candidateWrite?: { method: string; siid: number; piid: number; valueType: string };
+};
+
 export type InstallResult = {
   success: boolean;
   jobId: string;
@@ -47,6 +58,7 @@ export type InstallResult = {
   md5?: string;
   size?: number;
   command?: unknown;
+  diagnostics?: VoiceJobDiagnostics;
   before?: VoicePropertiesResponse;
   after?: VoicePropertiesResponse;
   result?: unknown;
