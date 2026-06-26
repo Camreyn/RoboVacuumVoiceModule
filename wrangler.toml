@@ -1,7 +1,6 @@
-﻿name = "dreame-voicepack-installer-api"
+name = "dreame-voicepack-installer-api-retired"
 main = "worker/src/index.ts"
 compatibility_date = "2024-12-18"
 
 [vars]
-MINDSOLO_API_BASE = "https://api-vacuum.mindsolo.net/api"
 ALLOWED_ORIGIN = "https://camreyn.github.io"

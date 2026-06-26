@@ -1,7 +1,9 @@
-﻿import {
+import {
   CheckCircle2,
+  FileAudio,
+  KeyRound,
+  Loader2,
   LogOut,
-  PlugZap,
   RefreshCcw,
   Search,
   Send,
@@ -12,114 +14,156 @@
 import { FormEvent, useMemo, useState } from "react";
 import {
   clearSession,
-  createSession,
-  DeviceConfig,
-  DeviceResponse,
   DeviceSummary,
   findDevices,
-  getDevice,
+  getVoiceProperties,
   installVoicePack,
+  InstallResult,
+  login,
+  verifyTwoFactor,
+  VoicePropertiesResponse,
 } from "./api";
-
-const DEFAULT_CONFIG: DeviceConfig = {
-  appName: "dreamehome",
-  deviceId: "107265",
-};
 
 type Status = {
   tone: "neutral" | "success" | "danger";
   text: string;
 };
 
+type AuthState = "signed_out" | "captcha" | "two_factor" | "signed_in";
+
+const DEFAULT_LOGIN = {
+  username: "",
+  password: "",
+  country: "us",
+  captchaCode: "",
+  twoFactorCode: "",
+};
+
 export function App() {
-  const [accessToken, setAccessToken] = useState("");
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [config, setConfig] = useState<DeviceConfig>(() => loadConfig());
-  const [device, setDevice] = useState<DeviceResponse | null>(null);
-  const [deviceMatches, setDeviceMatches] = useState<DeviceSummary[]>([]);
+  const [credentials, setCredentials] = useState(DEFAULT_LOGIN);
+  const [authState, setAuthState] = useState<AuthState>("signed_out");
+  const [captchaImage, setCaptchaImage] = useState<string | null>(null);
+  const [twoFactorDestination, setTwoFactorDestination] = useState<string | undefined>();
+  const [devices, setDevices] = useState<DeviceSummary[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>(() => loadSelectedDevice());
+  const [voiceStatus, setVoiceStatus] = useState<VoicePropertiesResponse | null>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [status, setStatus] = useState<Status>({
-    tone: "neutral",
-    text: "Ready",
-  });
+  const [installResult, setInstallResult] = useState<InstallResult | null>(null);
+  const [status, setStatus] = useState<Status>({ tone: "neutral", text: "Ready" });
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
-  const deviceName = useMemo(() => {
-    const payload = device?.payload ?? device;
-    return payload?.name || payload?.model || "Dreame X40";
-  }, [device]);
+  const selectedDevice = useMemo(
+    () => devices.find((device) => device.id === selectedDeviceId) ?? null,
+    [devices, selectedDeviceId],
+  );
+  const isAuthenticated = authState === "signed_in";
+  const deviceName = selectedDevice?.name || selectedDevice?.model || selectedDeviceId || "No X40 selected";
 
-  async function handleSession(event: FormEvent<HTMLFormElement>) {
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await runAction("session", async () => {
-      await createSession(accessToken);
-      setIsAuthenticated(true);
-      setAccessToken("");
-      setStatus({ tone: "success", text: "Session active" });
+    await runAction("login", async () => {
+      const result = await login({
+        username: credentials.username,
+        password: credentials.password,
+        country: credentials.country,
+        captchaCode: credentials.captchaCode || undefined,
+      });
+      applyLoginResult(result);
     });
   }
 
-  async function handleDeviceCheck(event?: FormEvent<HTMLFormElement>) {
-    event?.preventDefault();
-    persistConfig(config);
-    await runAction("device", async () => {
-      const nextDevice = await getDevice(config);
-      setDevice(nextDevice);
-      setStatus({ tone: "success", text: "Device connected" });
+  async function handleTwoFactor(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await runAction("two_factor", async () => {
+      const result = await verifyTwoFactor(credentials.twoFactorCode);
+      applyLoginResult(result);
+    });
+  }
+
+  function applyLoginResult(result: Awaited<ReturnType<typeof login>>) {
+    if (result.status === "authenticated") {
+      setAuthState("signed_in");
+      setCaptchaImage(null);
+      setTwoFactorDestination(undefined);
+      setCredentials((current) => ({ ...current, password: "", captchaCode: "", twoFactorCode: "" }));
+      setStatus({ tone: "success", text: "Local session active" });
+      return;
+    }
+
+    if (result.status === "captcha_required") {
+      setAuthState("captcha");
+      setCaptchaImage(result.captchaImage);
+      setStatus({ tone: "neutral", text: "Captcha required" });
+      return;
+    }
+
+    setAuthState("two_factor");
+    setTwoFactorDestination(result.destination);
+    setStatus({ tone: "neutral", text: "2FA code sent" });
+  }
+
+  async function handleLogout() {
+    await runAction("logout", async () => {
+      await clearSession();
+      setAuthState("signed_out");
+      setDevices([]);
+      setVoiceStatus(null);
+      setInstallResult(null);
+      setStatus({ tone: "neutral", text: "Session cleared" });
     });
   }
 
   async function handleDeviceSearch() {
     await runAction("devices", async () => {
       const result = await findDevices();
-      setDeviceMatches(result.devices);
+      setDevices(result.devices);
       if (result.devices.length === 1) {
         selectDevice(result.devices[0]);
-        setStatus({ tone: "success", text: "1 device found" });
+        setStatus({ tone: "success", text: "1 vacuum found" });
         return;
       }
       setStatus({
         tone: result.devices.length ? "success" : "danger",
-        text: result.devices.length
-          ? `${result.devices.length} devices found`
-          : result.message || "No devices found",
+        text: result.devices.length ? `${result.devices.length} vacuums found` : result.message || "No vacuums found",
       });
     });
   }
 
-  function selectDevice(match: DeviceSummary) {
-    const nextConfig = { appName: match.app, deviceId: match.id };
-    setConfig(nextConfig);
-    persistConfig(nextConfig);
-    setDevice(null);
+  function selectDevice(device: DeviceSummary) {
+    setSelectedDeviceId(device.id);
+    persistSelectedDevice(device.id);
+    setVoiceStatus(null);
+    setInstallResult(null);
+  }
+
+  async function handleVoiceRefresh() {
+    if (!selectedDeviceId) {
+      setStatus({ tone: "danger", text: "Choose a vacuum first" });
+      return;
+    }
+
+    await runAction("voice", async () => {
+      const result = await getVoiceProperties(selectedDeviceId);
+      setVoiceStatus(result);
+      setStatus({ tone: "success", text: "Voice status loaded" });
+    });
   }
 
   async function handleInstall() {
+    if (!selectedDeviceId) {
+      setStatus({ tone: "danger", text: "Choose a vacuum first" });
+      return;
+    }
     if (!file) {
       setStatus({ tone: "danger", text: "Choose a voice-pack file first" });
       return;
     }
 
-    persistConfig(config);
     await runAction("install", async () => {
-      const result = await installVoicePack(config, file);
-      if (result.success === false || result.message) {
-        setStatus({
-          tone: result.success === false ? "danger" : "success",
-          text: result.message || "Install command sent",
-        });
-        return;
-      }
-      setStatus({ tone: "success", text: "Install command sent" });
-    });
-  }
-
-  async function handleLogout() {
-    await runAction("logout", async () => {
-      await clearSession();
-      setIsAuthenticated(false);
-      setDevice(null);
-      setStatus({ tone: "neutral", text: "Session cleared" });
+      const result = await installVoicePack(selectedDeviceId, file);
+      setInstallResult(result);
+      setVoiceStatus(result.after || result.before || null);
+      setStatus({ tone: result.success ? "success" : "neutral", text: result.message });
     });
   }
 
@@ -129,10 +173,7 @@ export function App() {
     try {
       await callback();
     } catch (error) {
-      setStatus({
-        tone: "danger",
-        text: error instanceof Error ? error.message : "Request failed",
-      });
+      setStatus({ tone: "danger", text: error instanceof Error ? error.message : "Request failed" });
     } finally {
       setBusyAction(null);
     }
@@ -142,107 +183,129 @@ export function App() {
     <main className="shell">
       <section className="topbar" aria-label="Application header">
         <div>
-          <p className="eyebrow">Dreame X40</p>
+          <p className="eyebrow">Local Dreame X40</p>
           <h1>Voice-pack installer</h1>
         </div>
-        <StatusPill status={status} />
+        <StatusPill status={status} busy={Boolean(busyAction)} />
       </section>
 
       <section className="workspace">
-        <form className="panel auth-panel" onSubmit={handleSession}>
+        <form className="panel auth-panel" onSubmit={handleLogin}>
           <div className="panel-title">
             <ShieldCheck aria-hidden="true" />
-            <h2>Session</h2>
+            <h2>Dreame account</h2>
           </div>
           <label>
-            Access token
+            Email or phone
             <input
-              autoComplete="off"
-              disabled={busyAction === "session"}
-              onChange={(event) => setAccessToken(event.target.value)}
-              placeholder="Paste token"
-              type="password"
-              value={accessToken}
+              autoComplete="username"
+              disabled={busyAction === "login" || isAuthenticated}
+              onChange={(event) => setCredentials((current) => ({ ...current, username: event.target.value }))}
+              value={credentials.username}
             />
           </label>
+          <div className="field-grid compact-grid">
+            <label>
+              Password
+              <input
+                autoComplete="current-password"
+                disabled={busyAction === "login" || isAuthenticated}
+                onChange={(event) => setCredentials((current) => ({ ...current, password: event.target.value }))}
+                type="password"
+                value={credentials.password}
+              />
+            </label>
+            <label>
+              Region
+              <input
+                disabled={busyAction === "login" || isAuthenticated}
+                onChange={(event) => setCredentials((current) => ({ ...current, country: event.target.value.toLowerCase() }))}
+                value={credentials.country}
+              />
+            </label>
+          </div>
+          {authState === "captcha" ? (
+            <div className="challenge-box">
+              {captchaImage ? <img alt="Captcha challenge" src={captchaImage} /> : null}
+              <label>
+                Captcha
+                <input
+                  onChange={(event) => setCredentials((current) => ({ ...current, captchaCode: event.target.value }))}
+                  value={credentials.captchaCode}
+                />
+              </label>
+            </div>
+          ) : null}
           <div className="button-row">
-            <button disabled={!accessToken || busyAction === "session"} type="submit">
-              <PlugZap aria-hidden="true" />
-              Connect
+            <button disabled={isAuthenticated || busyAction === "login" || !credentials.username || !credentials.password} type="submit">
+              <KeyRound aria-hidden="true" />
+              Sign in
             </button>
-            <button
-              className="secondary"
-              disabled={busyAction === "logout"}
-              onClick={handleLogout}
-              type="button"
-            >
+            <button className="secondary" disabled={busyAction === "logout"} onClick={handleLogout} type="button">
               <LogOut aria-hidden="true" />
               Clear
             </button>
           </div>
         </form>
 
-        <form className="panel" onSubmit={handleDeviceCheck}>
-          <div className="panel-title">
-            <RefreshCcw aria-hidden="true" />
-            <h2>Device</h2>
-          </div>
-          <div className="field-grid">
+        {authState === "two_factor" ? (
+          <form className="panel" onSubmit={handleTwoFactor}>
+            <div className="panel-title">
+              <ShieldCheck aria-hidden="true" />
+              <h2>Two-factor code</h2>
+            </div>
+            {twoFactorDestination ? <p className="hint">Code sent to {twoFactorDestination}</p> : null}
             <label>
-              App
-              <input
-                onChange={(event) =>
-                  setConfig((current) => ({ ...current, appName: event.target.value }))
-                }
-                value={config.appName}
-              />
-            </label>
-            <label>
-              Device ID
+              Code
               <input
                 inputMode="numeric"
-                onChange={(event) =>
-                  setConfig((current) => ({ ...current, deviceId: event.target.value }))
-                }
-                value={config.deviceId}
+                onChange={(event) => setCredentials((current) => ({ ...current, twoFactorCode: event.target.value }))}
+                value={credentials.twoFactorCode}
               />
             </label>
+            <button disabled={!credentials.twoFactorCode || busyAction === "two_factor"} type="submit">
+              <ShieldCheck aria-hidden="true" />
+              Verify
+            </button>
+          </form>
+        ) : null}
+
+        <section className="panel">
+          <div className="panel-title">
+            <Search aria-hidden="true" />
+            <h2>Vacuum</h2>
           </div>
           <div className="button-row">
-            <button disabled={!isAuthenticated || busyAction === "device"} type="submit">
-              <RefreshCcw aria-hidden="true" />
-              Check
-            </button>
-            <button
-              className="secondary"
-              disabled={!isAuthenticated || busyAction === "devices"}
-              onClick={handleDeviceSearch}
-              type="button"
-            >
+            <button disabled={!isAuthenticated || busyAction === "devices"} onClick={handleDeviceSearch} type="button">
               <Search aria-hidden="true" />
-              Find
+              Find X40
+            </button>
+            <button className="secondary" disabled={!isAuthenticated || !selectedDeviceId || busyAction === "voice"} onClick={handleVoiceRefresh} type="button">
+              <RefreshCcw aria-hidden="true" />
+              Status
             </button>
           </div>
-          {deviceMatches.length ? (
+          {devices.length ? (
             <div className="device-list">
-              {deviceMatches.map((match) => (
+              {devices.map((device) => (
                 <button
-                  className="device-option"
-                  key={`${match.app}:${match.id}`}
-                  onClick={() => selectDevice(match)}
+                  className={`device-option ${device.id === selectedDeviceId ? "selected" : ""}`}
+                  key={device.id}
+                  onClick={() => selectDevice(device)}
                   type="button"
                 >
-                  <span>{match.name || match.model || match.id}</span>
-                  <small>{match.app} / {match.id}</small>
+                  <span>{device.name || device.model || device.id}</span>
+                  <small>{device.model || "unknown model"} / {device.id}</small>
                 </button>
               ))}
             </div>
           ) : null}
           <div className="device-strip">
-            <span>{device ? deviceName : "No device loaded"}</span>
-            {device ? <CheckCircle2 aria-hidden="true" /> : <XCircle aria-hidden="true" />}
+            <span>{deviceName}</span>
+            {selectedDeviceId ? <CheckCircle2 aria-hidden="true" /> : <XCircle aria-hidden="true" />}
           </div>
-        </form>
+          <VoiceStatus value={voiceStatus} />
+        </section>
 
         <section className="panel install-panel">
           <div className="panel-title">
@@ -250,11 +313,8 @@ export function App() {
             <h2>Voice pack</h2>
           </div>
           <label className="file-picker">
-            <input
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-              type="file"
-            />
-            <Upload aria-hidden="true" />
+            <input onChange={(event) => setFile(event.target.files?.[0] ?? null)} type="file" />
+            <FileAudio aria-hidden="true" />
             <span>{file ? file.name : "Choose file"}</span>
           </label>
           {file ? (
@@ -263,39 +323,68 @@ export function App() {
               <span>{file.type || "binary"}</span>
             </div>
           ) : null}
-          <button
-            className="primary-wide"
-            disabled={!isAuthenticated || !file || busyAction === "install"}
-            onClick={handleInstall}
-            type="button"
-          >
+          <button className="primary-wide" disabled={!isAuthenticated || !selectedDeviceId || !file || busyAction === "install"} onClick={handleInstall} type="button">
             <Send aria-hidden="true" />
-            Send to robot
+            Prepare pack
           </button>
+          {installResult ? <InstallSummary result={installResult} /> : null}
         </section>
       </section>
     </main>
   );
 }
 
-function StatusPill({ status }: { status: Status }) {
-  return <div className={`status status-${status.tone}`}>{status.text}</div>;
-}
-
-function loadConfig(): DeviceConfig {
-  const raw = window.localStorage.getItem("dreame-device-config");
-  if (!raw) {
-    return DEFAULT_CONFIG;
+function VoiceStatus({ value }: { value: VoicePropertiesResponse | null }) {
+  if (!value) {
+    return <div className="status-grid muted">Voice status not loaded</div>;
   }
 
-  try {
-    return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
-  } catch {
-    return DEFAULT_CONFIG;
-  }
+  const properties = value.properties || {};
+  return (
+    <div className="status-grid">
+      <span>Packet</span>
+      <strong>{String(properties.voice_packet_id ?? "unknown")}</strong>
+      <span>Change status</span>
+      <strong>{String(properties.voice_change_status ?? "unknown")}</strong>
+    </div>
+  );
 }
 
-function persistConfig(config: DeviceConfig) {
-  window.localStorage.setItem("dreame-device-config", JSON.stringify(config));
+function InstallSummary({ result }: { result: InstallResult }) {
+  return (
+    <div className="install-summary">
+      <div>
+        <span>Job</span>
+        <strong>{result.jobId}</strong>
+      </div>
+      {result.md5 ? (
+        <div>
+          <span>MD5</span>
+          <strong>{result.md5}</strong>
+        </div>
+      ) : null}
+      {result.fileUrl ? (
+        <a href={result.fileUrl} target="_blank" rel="noreferrer">
+          Local pack URL
+        </a>
+      ) : null}
+    </div>
+  );
 }
 
+function StatusPill({ status, busy }: { status: Status; busy: boolean }) {
+  return (
+    <div className={`status status-${status.tone}`}>
+      {busy ? <Loader2 aria-hidden="true" /> : null}
+      {status.text}
+    </div>
+  );
+}
+
+function loadSelectedDevice(): string {
+  return window.localStorage.getItem("dreame-selected-device") || "";
+}
+
+function persistSelectedDevice(deviceId: string) {
+  window.localStorage.setItem("dreame-selected-device", deviceId);
+}

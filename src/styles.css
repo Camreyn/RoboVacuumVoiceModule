@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   color: #17201f;
   background: #eef2ef;
   font-family:
@@ -34,7 +34,7 @@ button {
   display: inline-flex;
   font-weight: 700;
   gap: 8px;
-  height: 42px;
+  min-height: 42px;
   justify-content: center;
   padding: 0 14px;
   transition:
@@ -99,7 +99,7 @@ label {
 
 .shell {
   margin: 0 auto;
-  max-width: 1120px;
+  max-width: 1180px;
   padding: 28px 18px 40px;
 }
 
@@ -121,7 +121,8 @@ label {
 }
 
 h1,
-h2 {
+h2,
+p {
   letter-spacing: 0;
   margin: 0;
 }
@@ -141,7 +142,7 @@ h2 {
   align-items: start;
   display: grid;
   gap: 14px;
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(260px, 0.9fr) minmax(300px, 1fr) minmax(300px, 1fr);
 }
 
 .panel {
@@ -184,6 +185,32 @@ h2 {
   min-width: 0;
 }
 
+.compact-grid label:last-child {
+  flex: 0 0 84px;
+}
+
+.challenge-box {
+  background: #f4f7f5;
+  border: 1px solid #dbe4e1;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.challenge-box img {
+  background: #ffffff;
+  border: 1px solid #c7d3cf;
+  border-radius: 6px;
+  max-width: 100%;
+}
+
+.hint {
+  color: #5f6c68;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
 .device-list {
   display: flex;
   flex-direction: column;
@@ -198,15 +225,16 @@ h2 {
   flex-direction: column;
   gap: 2px;
   height: auto;
-  min-height: 54px;
+  min-height: 58px;
   padding: 10px 12px;
   text-align: left;
   width: 100%;
 }
 
-.device-option:hover:not(:disabled) {
+.device-option:hover:not(:disabled),
+.device-option.selected {
   background: #f4f7f5;
-  border-color: #9fb0aa;
+  border-color: #165e64;
 }
 
 .device-option span,
@@ -219,11 +247,17 @@ h2 {
   color: #5f6c68;
   font-weight: 700;
 }
-.device-strip {
-  align-items: center;
+
+.device-strip,
+.status-grid,
+.install-summary {
   background: #f4f7f5;
   border: 1px solid #dbe4e1;
   border-radius: 8px;
+}
+
+.device-strip {
+  align-items: center;
   color: #42514d;
   display: flex;
   font-weight: 700;
@@ -236,6 +270,26 @@ h2 {
   color: #6c7b3c;
   height: 18px;
   width: 18px;
+}
+
+.status-grid {
+  color: #42514d;
+  display: grid;
+  font-size: 0.9rem;
+  gap: 6px 12px;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 12px;
+}
+
+.status-grid strong,
+.install-summary strong {
+  color: #17201f;
+  overflow-wrap: anywhere;
+}
+
+.status-grid.muted {
+  display: block;
+  font-weight: 700;
 }
 
 .file-picker {
@@ -279,15 +333,47 @@ h2 {
   width: 100%;
 }
 
+.install-summary {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.install-summary div {
+  display: grid;
+  gap: 2px;
+}
+
+.install-summary span {
+  color: #5f6c68;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.install-summary a {
+  color: #165e64;
+  font-weight: 800;
+}
+
 .status {
+  align-items: center;
   border: 1px solid #c7d3cf;
   border-radius: 999px;
   color: #253330;
+  display: inline-flex;
   flex: 0 0 auto;
   font-weight: 800;
+  gap: 8px;
   min-width: 92px;
   padding: 8px 12px;
   text-align: center;
+}
+
+.status svg {
+  animation: spin 900ms linear infinite;
+  height: 16px;
+  width: 16px;
 }
 
 .status-neutral {
@@ -306,7 +392,13 @@ h2 {
   color: #70290f;
 }
 
-@media (max-width: 900px) {
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 980px) {
   .workspace {
     grid-template-columns: 1fr;
   }
@@ -323,8 +415,11 @@ h2 {
     flex-direction: column;
   }
 
+  .compact-grid label:last-child {
+    flex: 1;
+  }
+
   h1 {
     font-size: 1.85rem;
   }
 }
-

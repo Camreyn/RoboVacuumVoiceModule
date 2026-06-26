@@ -1,7 +1,14 @@
-﻿export type DeviceConfig = {
-  appName: string;
-  deviceId: string;
+export type LoginRequest = {
+  username: string;
+  password: string;
+  country: string;
+  captchaCode?: string;
 };
+
+export type LoginResponse =
+  | { status: "authenticated" }
+  | { status: "captcha_required"; captchaImage: string }
+  | { status: "2fa_required"; destination?: string };
 
 export type ApiError = {
   message: string;
@@ -12,7 +19,7 @@ export type DeviceSummary = {
   app: string;
   name?: string;
   model?: string;
-  country?: string;
+  localIp?: string;
   source?: string;
 };
 
@@ -21,23 +28,28 @@ export type DeviceListResponse = {
   message?: string;
 };
 
-export type DeviceResponse = {
-  id?: string | number;
-  name?: string;
-  model?: string;
-  voicepack_settings?: {
-    file_type?: string;
-    upload_file_naming?: string;
+export type VoicePropertiesResponse = {
+  raw?: unknown;
+  properties?: {
+    voice_packet_id?: unknown;
+    voice_change_status?: unknown;
+    voice_change?: unknown;
   };
-  payload?: DeviceResponse;
-  [key: string]: unknown;
+  message?: string;
 };
 
 export type InstallResult = {
-  success?: boolean;
-  message?: string;
-  error_type?: string;
-  [key: string]: unknown;
+  success: boolean;
+  jobId: string;
+  message: string;
+  status?: string;
+  fileUrl?: string;
+  md5?: string;
+  size?: number;
+  command?: unknown;
+  before?: VoicePropertiesResponse;
+  after?: VoicePropertiesResponse;
+  result?: unknown;
 };
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8787").replace(
@@ -45,40 +57,39 @@ const API_BASE = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8787").
   "",
 );
 
-export async function createSession(accessToken: string): Promise<void> {
-  await request("/api/session", {
+export async function login(requestBody: LoginRequest): Promise<LoginResponse> {
+  return request<LoginResponse>("/api/auth/login", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ accessToken }),
+    body: JSON.stringify(requestBody),
+  });
+}
+
+export async function verifyTwoFactor(code: string): Promise<LoginResponse> {
+  return request<LoginResponse>("/api/auth/verify-2fa", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ code }),
   });
 }
 
 export async function clearSession(): Promise<void> {
-  await request("/api/session", { method: "DELETE" });
+  await request("/api/auth/session", { method: "DELETE" });
 }
 
 export async function findDevices(): Promise<DeviceListResponse> {
   return request<DeviceListResponse>("/api/devices");
 }
 
-export async function getDevice(config: DeviceConfig): Promise<DeviceResponse> {
-  const params = new URLSearchParams({
-    appName: config.appName,
-    deviceId: config.deviceId,
-  });
-  return request<DeviceResponse>(`/api/device?${params}`);
+export async function getVoiceProperties(deviceId: string): Promise<VoicePropertiesResponse> {
+  return request<VoicePropertiesResponse>(`/api/devices/${encodeURIComponent(deviceId)}/properties`);
 }
 
-export async function installVoicePack(
-  config: DeviceConfig,
-  file: File,
-): Promise<InstallResult> {
+export async function installVoicePack(deviceId: string, file: File): Promise<InstallResult> {
   const form = new FormData();
-  form.set("appName", config.appName);
-  form.set("deviceId", config.deviceId);
   form.set("file", file);
 
-  return request<InstallResult>("/api/voice/install", {
+  return request<InstallResult>(`/api/devices/${encodeURIComponent(deviceId)}/voice-pack`, {
     method: "POST",
     body: form,
   });
@@ -111,4 +122,3 @@ function parseJson(text: string): unknown {
     return { message: text };
   }
 }
-
