@@ -16,7 +16,8 @@
     "build:desktop": "node scripts/build-desktop.mjs",
     "desktop:dir": "node scripts/build-desktop.mjs && electron-builder --dir",
     "desktop:build": "node scripts/build-desktop.mjs && electron-builder",
-    "build:brad-pack": "node scripts/brad-voicepack.mjs"
+    "build:brad-pack": "node scripts/brad-voicepack.mjs",
+    "desktop:ci": "node scripts/build-desktop.mjs && electron-builder --win zip --publish never"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",

@@ -1,4 +1,4 @@
-﻿# Desktop App Releases
+# Desktop App Releases
 
 This repository builds a downloadable Windows desktop app with Electron. The app packages the local Dreame API and the React UI together, so users do not need to run a separate dev server.
 
@@ -22,7 +22,7 @@ npm run desktop:dir
 
 ## Automatic Downloads
 
-`.github/workflows/desktop-release.yml` builds the Windows app on pushes to `main` or `master`.
+`.github/workflows/desktop-release.yml` builds the portable Windows ZIP on pushes to `main` or `master`. Local builds can still produce the NSIS installer with `npm run desktop:build`.
 
 - Normal pushes update the `Latest Desktop Build` prerelease under GitHub Releases.
 - Pushing a tag like `v0.1.0` creates a normal versioned GitHub Release.
