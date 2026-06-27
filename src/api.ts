@@ -70,6 +70,8 @@ const SESSION_STORAGE_KEY = "dreame-local-session";
 const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8787";
 
 export function getApiBaseUrl(): string {
+  const queryApiBase = new URLSearchParams(window.location.search).get("apiBase");
+  if (queryApiBase) return setApiBaseUrl(queryApiBase);
   return (window.localStorage.getItem(API_BASE_STORAGE_KEY) || DEFAULT_API_BASE).replace(/\/$/, "");
 }
 

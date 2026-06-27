@@ -9,3 +9,5 @@ dist/
 .wrangler/
 .codex-remote-attachments/
 .etl/
+release/
+.generated/

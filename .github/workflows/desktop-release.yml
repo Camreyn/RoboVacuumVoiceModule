@@ -1,0 +1,68 @@
+﻿name: Build Desktop App
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run desktop:build
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-desktop-app
+          path: |
+            release/*.exe
+            release/*.zip
+            release/*.blockmap
+            release/*.yml
+          if-no-files-found: error
+      - name: Update rolling desktop tag
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        shell: bash
+        run: |
+          git tag -f desktop-latest "$GITHUB_SHA"
+          git push -f origin desktop-latest
+      - name: Publish rolling desktop release
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: desktop-latest
+          name: Latest Desktop Build
+          body: |
+            Automatic desktop build from `${{ github.sha }}`.
+
+            This prerelease is replaced on each push to `main` or `master`.
+          prerelease: true
+          make_latest: false
+          files: |
+            release/*.exe
+            release/*.zip
+            release/*.blockmap
+            release/*.yml
+      - name: Publish versioned desktop release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            release/*.exe
+            release/*.zip
+            release/*.blockmap
+            release/*.yml
