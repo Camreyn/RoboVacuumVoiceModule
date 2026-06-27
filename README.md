@@ -95,3 +95,44 @@ Use this sequence before treating send mode as stable:
 npm test
 npm run build
 ```
+
+## Brad quote voice-pack builder
+
+This repo includes a local builder for a Dreame X40 quote pack sourced from [Shit Brad Says](https://shitbradsays.com/) and numbered according to the [voicepacks_dreame](https://github.com/Makers-Im-Zigerschlitz/voicepacks_dreame) sound list.
+
+Prerequisites:
+
+- `ffmpeg` for cutting, filtering, normalizing, and exporting `.ogg` clips.
+- `yt-dlp` is strongly recommended for Brad-specific clips because most high-confidence Brad/Snow Plow Show matches are YouTube sources. Some YouTube downloads require explicit `--yt-remote-components`, which lets yt-dlp use its GitHub-hosted JS challenge solver. Without YouTube support, the builder can only cut direct-audio notla/Prankcast matches and coverage will be much lower.
+- Optional `tar` for creating `brad-x40.tar.gz` from the generated clips.
+
+Review planned quote matches and source links first:
+
+```sh
+npm run build:brad-pack -- -- --dry-run
+```
+
+Build a pack:
+
+```sh
+npm run build:brad-pack
+```
+
+Outputs are written under `.generated/brad-x40/`:
+
+- `clips/*.ogg`: numbered Dreame voice files such as `7.ogg` and `13.ogg`.
+- `source-manifest.json`: selected quotes, search terms, timestamps, source links, and runner diagnostics.
+- `source-manifest.csv`: spreadsheet-friendly review file.
+- `brad-x40.tar.gz`: upload this with the installer after reviewing the manifest.
+
+Useful narrower runs:
+
+```sh
+npm run build:brad-pack -- -- --sound-ids "7,13,18"
+npm run build:brad-pack -- -- --direct-only
+npm run build:brad-pack -- -- --prefer-youtube --yt-remote-components
+# Use the old broad transcript behavior only for manual research:
+npm run build:brad-pack -- -- --loose --include-prankcast
+```
+
+The builder uses a default transcript blocklist to avoid obviously bad home-announcement clips. Pass `--allow-explicit` only if you want to review unfiltered results yourself.

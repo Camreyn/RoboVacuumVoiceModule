@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "worker:dev": "wrangler dev worker/src/index.ts --local --port 8787",
-    "worker:deploy": "wrangler deploy"
+    "worker:deploy": "wrangler deploy",
+    "build:brad-pack": "node scripts/brad-voicepack.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
