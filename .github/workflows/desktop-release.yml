@@ -1,4 +1,4 @@
-name: Build Desktop App
+﻿name: Build Desktop App
 
 on:
   push:
@@ -39,6 +39,27 @@ jobs:
         run: |
           git tag -f desktop-latest "$GITHUB_SHA"
           git push -f origin desktop-latest
+      - name: Clear old rolling release assets
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              const release = await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: 'desktop-latest',
+              });
+              for (const asset of release.data.assets) {
+                await github.rest.repos.deleteReleaseAsset({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  asset_id: asset.id,
+                });
+              }
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
       - name: Publish rolling desktop release
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: softprops/action-gh-release@v2
