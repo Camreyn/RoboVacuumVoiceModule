@@ -292,6 +292,16 @@ h2 {
   font-weight: 700;
 }
 
+.test-actions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.test-actions button {
+  min-width: 0;
+}
+
 .file-picker {
   align-items: center;
   background: #f4f7f5;
@@ -448,6 +458,10 @@ h2 {
   .button-row,
   .field-grid {
     flex-direction: column;
+  }
+
+  .test-actions {
+    grid-template-columns: 1fr;
   }
 
   .compact-grid label:last-child {

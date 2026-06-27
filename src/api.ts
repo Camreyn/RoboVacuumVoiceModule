@@ -50,6 +50,15 @@ export type VoiceJobDiagnostics = {
   candidateWrite?: { method: string; siid: number; piid: number; valueType: string };
 };
 
+export type VoiceTestAction = "charge" | "pause" | "stop";
+
+export type VoiceTestResult = {
+  action: VoiceTestAction;
+  label: string;
+  command?: unknown;
+  raw?: unknown;
+};
+
 export type InstallResult = {
   success: boolean;
   jobId: string;
@@ -139,6 +148,14 @@ export async function findDevices(): Promise<DeviceListResponse> {
 
 export async function getVoiceProperties(deviceId: string): Promise<VoicePropertiesResponse> {
   return request<VoicePropertiesResponse>(`/api/devices/${encodeURIComponent(deviceId)}/properties`);
+}
+
+export async function sendVoiceTestAction(deviceId: string, action: VoiceTestAction): Promise<VoiceTestResult> {
+  return request<VoiceTestResult>(`/api/devices/${encodeURIComponent(deviceId)}/voice-test`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action }),
+  });
 }
 
 export async function installVoicePack(deviceId: string, file: File, options: { send?: boolean } = {}): Promise<InstallResult> {

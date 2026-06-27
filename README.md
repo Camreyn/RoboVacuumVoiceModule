@@ -25,6 +25,7 @@ The original Cloudflare Worker/Mindsolo-compatible API flow has been retired in 
    ```
 
 4. Open `http://localhost:5175`, sign in with your Dreamehome account, find the X40, refresh voice status, and upload a voice-pack file.
+5. Use the Vacuum panel test buttons to trigger normal robot prompts after sending a pack.
 
 Fallback development commands:
 
@@ -80,6 +81,7 @@ Use this sequence before treating send mode as stable:
 4. Upload a known-good voice pack and confirm the returned `fileUrl` is reachable from another device on the same LAN.
 5. Review the returned command payload, then restart the API with `DREAME_VOICE_INSTALL_MODE=send`.
 6. Send one known-good pack, poll voice status before and after, and record the final payload shape if the robot requires changes.
+7. Use Return, Pause, or Stop from the Vacuum panel to make the robot speak a normal system prompt and confirm the installed pack is active.
 
 ## Important implementation notes
 
@@ -88,6 +90,7 @@ Use this sequence before treating send mode as stable:
 - Uploaded voice packs are stored in the OS temp directory under `dreame-voice-packs`.
 - Device tokens and sensitive session fields are redacted from API responses.
 - The candidate Dreame direct command uses the X40 voice service properties exposed as `siid=7` / `piid=2..4`; this still needs a real-device confirmation pass before treating `send` mode as production-safe.
+- The voice test buttons send normal Dreame action commands such as return-to-dock, pause, and stop. They verify audible robot prompts, not arbitrary individual voice-pack files.
 
 ## Checks
 

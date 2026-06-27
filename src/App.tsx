@@ -1,13 +1,16 @@
 import {
   CheckCircle2,
   FileAudio,
+  Home,
   KeyRound,
   Loader2,
   LogOut,
+  Pause,
   RefreshCcw,
   Search,
   Send,
   ShieldCheck,
+  Square,
   Upload,
   XCircle,
 } from "lucide-react";
@@ -21,9 +24,11 @@ import {
   installVoicePack,
   InstallResult,
   login,
+  sendVoiceTestAction,
   setApiBaseUrl as saveApiBaseUrl,
   verifyTwoFactor,
   VoicePropertiesResponse,
+  VoiceTestAction,
 } from "./api";
 
 type Status = {
@@ -156,6 +161,22 @@ export function App() {
 
   async function handleVoiceRefresh() {
     await refreshVoiceStatus(selectedDeviceId);
+  }
+
+  async function handleVoiceTest(action: VoiceTestAction) {
+    if (!selectedDeviceId) {
+      setStatus({ tone: "danger", text: "Choose a vacuum first" });
+      return;
+    }
+
+    await runAction(`voice-test-${action}`, async () => {
+      const result = await sendVoiceTestAction(selectedDeviceId, action);
+      const voice = await getVoiceProperties(selectedDeviceId).catch((error) => ({
+        message: error instanceof Error ? error.message : "Voice status refresh failed",
+      }));
+      setVoiceStatus(voice);
+      setStatus({ tone: "success", text: `${result.label} sent` });
+    });
   }
 
   async function refreshVoiceStatus(deviceId: string) {
@@ -348,6 +369,20 @@ export function App() {
             {selectedDeviceId ? <CheckCircle2 aria-hidden="true" /> : <XCircle aria-hidden="true" />}
           </div>
           <VoiceStatus value={voiceStatus} />
+          <div className="test-actions" aria-label="Voice test actions">
+            <button disabled={!isAuthenticated || !selectedDeviceId || Boolean(busyAction)} onClick={() => handleVoiceTest("charge")} type="button">
+              <Home aria-hidden="true" />
+              Return
+            </button>
+            <button className="secondary" disabled={!isAuthenticated || !selectedDeviceId || Boolean(busyAction)} onClick={() => handleVoiceTest("pause")} type="button">
+              <Pause aria-hidden="true" />
+              Pause
+            </button>
+            <button className="secondary" disabled={!isAuthenticated || !selectedDeviceId || Boolean(busyAction)} onClick={() => handleVoiceTest("stop")} type="button">
+              <Square aria-hidden="true" />
+              Stop
+            </button>
+          </div>
         </section>
 
         <section className="panel install-panel">

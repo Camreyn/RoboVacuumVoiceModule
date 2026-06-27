@@ -16,6 +16,11 @@ const VOICE_PROPERTIES = [
   { did: "7.3", siid: 7, piid: 3, name: "voice_change_status" },
   { did: "7.4", siid: 7, piid: 4, name: "voice_change" },
 ];
+const VOICE_TEST_ACTIONS = {
+  charge: { label: "Return to dock", siid: 3, aiid: 1 },
+  pause: { label: "Pause", siid: 2, aiid: 2 },
+  stop: { label: "Stop", siid: 4, aiid: 2 },
+};
 
 const sessions = new Map();
 const jobs = new Map();
@@ -96,6 +101,17 @@ async function routeRequest(req, res, config) {
     const deviceId = decodeURIComponent(propertiesMatch[1]);
     const properties = await client.getVoiceProperties(deviceId);
     sendJson(req, res, properties, 200, allowedOrigin);
+    return;
+  }
+
+  const voiceTestMatch = url.pathname.match(/^\/api\/devices\/([^/]+)\/voice-test$/);
+  if (voiceTestMatch && req.method === "POST") {
+    const { client } = requireAuthenticatedSession(req, config.sessionTtlMs);
+    const deviceId = decodeURIComponent(voiceTestMatch[1]);
+    const body = await readJsonBody(req);
+    const actionId = stringField(body, "action");
+    const result = await client.sendVoiceTestAction(deviceId, actionId);
+    sendJson(req, res, result, 200, allowedOrigin);
     return;
   }
 
@@ -229,6 +245,14 @@ export class DreameCloudClient {
     return this.send(deviceId, "set_properties", [
       { did: deviceId, siid: 7, piid: 4, value: JSON.stringify(payload) },
     ]);
+  }
+
+  async sendVoiceTestAction(deviceId, actionId) {
+    const action = VOICE_TEST_ACTIONS[actionId];
+    if (!action) throw new HttpError("Unknown voice test action.", 400);
+    const command = { did: deviceId, siid: action.siid, aiid: action.aiid };
+    const raw = await this.send(deviceId, "action", command);
+    return { action: actionId, label: action.label, command, raw };
   }
 
   async send(deviceId, method, params) {

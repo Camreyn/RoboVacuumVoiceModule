@@ -136,6 +136,33 @@ describe("local Dreame API integration", () => {
     );
   });
 
+  it("sends voice test action commands", async () => {
+    const fakeClient = {
+      login: async () => ({ status: "authenticated" }),
+      sendVoiceTestAction: vi.fn(async (deviceId, action) => ({
+        action,
+        label: "Return to dock",
+        command: { did: deviceId, siid: 3, aiid: 1 },
+        raw: [{ code: 0 }],
+      })),
+    };
+
+    await withServer({ clientFactory: () => fakeClient }, async ({ baseUrl }) => {
+      const cookie = await loginCookie(baseUrl);
+      const response = await postJson(`${baseUrl}/api/devices/107265/voice-test`, { action: "charge" }, cookie);
+      const payload = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(fakeClient.sendVoiceTestAction).toHaveBeenCalledWith("107265", "charge");
+      expect(payload).toEqual(
+        expect.objectContaining({
+          action: "charge",
+          label: "Return to dock",
+          command: { did: "107265", siid: 3, aiid: 1 },
+        }),
+      );
+    });
+  });
   it("prepares voice-pack uploads without sending by default", async () => {
     const fakeClient = {
       login: async () => ({ status: "authenticated" }),
