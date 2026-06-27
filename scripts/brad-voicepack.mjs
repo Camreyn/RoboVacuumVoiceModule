@@ -60,50 +60,50 @@ const BLOCKED_TERMS = [
 ];
 
 const CORE_X40_SLOTS = [
-  { id: 0, description: "Startup sound", searches: ["hello", "wake up"] },
-  { id: 7, description: "Start cleaning", searches: ["start cleaning", "cleaning"] },
-  { id: 8, description: "Start spot cleaning", searches: ["spot cleaning", "spot"] },
-  { id: 11, description: "Paused", searches: ["hang on", "wait a minute", "paused"], clipSeconds: 3.0 },
-  { id: 12, description: "Cleaning task completed", searches: ["done", "finished", "completed"] },
-  { id: 13, description: "Returning to the dock to charge", searches: ["return to the dock", "charging", "go back"] },
-  { id: 14, description: "Low battery, returning to dock", searches: ["low battery", "charging"] },
-  { id: 18, description: "Charging", searches: ["charging"], clipSeconds: 3.0 },
-  { id: 20, description: "Low battery", searches: ["battery", "low battery"], clipSeconds: 3.2 },
-  { id: 22, description: "Move robot to area to clean", searches: ["clean this", "go over there", "cleaning"] },
-  { id: 23, description: "Water tank installed", searches: ["water tank", "water"] },
-  { id: 34, description: "Dustbin not installed", searches: ["trash", "garbage", "dust"] },
-  { id: 35, description: "Main brush error", searches: ["brush", "clean brush"] },
-  { id: 40, description: "Robot stuck", searches: ["stuck", "I'm stuck"] },
-  { id: 44, description: "Generic error", searches: ["error", "problem"] },
-  { id: 45, description: "I am here", searches: ["I am here", "over here"], clipSeconds: 2.8 },
-  { id: 47, description: "Start charging", searches: ["start charging", "charging"] },
-  { id: 50, description: "Charging error", searches: ["charging error", "clean contacts", "charging"] },
-  { id: 56, description: "Start selected room cleaning", searches: ["room cleaning", "cleaning room"] },
-  { id: 57, description: "Start zoned cleaning", searches: ["zone", "area"] },
-  { id: 59, description: "Mopping completed", searches: ["mopping completed", "done mopping", "mop"] },
-  { id: 61, description: "Start mopping", searches: ["mopping", "mop"] },
-  { id: 63, description: "Water tank removed", searches: ["water tank", "remove water"] },
-  { id: 66, description: "Filter worn out", searches: ["filter", "replace filter"] },
-  { id: 69, description: "Cleanup path blocked", searches: ["blocked", "path blocked"] },
-  { id: 70, description: "Remove and clean mop pad", searches: ["mop pad", "remove mop", "clean mop"] },
-  { id: 82, description: "Start mapping", searches: ["mapping", "map"] },
-  { id: 84, description: "Mapping completed", searches: ["map complete", "completed map", "map"] },
-  { id: 88, description: "Enter remote control mode", searches: ["remote control"] },
-  { id: 91, description: "Clean water tank not installed", searches: ["clean water tank", "water tank"] },
-  { id: 93, description: "Not enough clean water", searches: ["not enough water", "water"] },
-  { id: 94, description: "Dirty water tank full", searches: ["dirty water", "tank full"] },
-  { id: 98, description: "Dust collection bag full", searches: ["bag full", "empty bag"] },
-  { id: 106, description: "Start cleaning the mop", searches: ["washing", "mop"] },
-  { id: 110, description: "Start auto empty", searches: ["auto empty", "emptying"] },
-  { id: 116, description: "Child lock on", searches: ["locked", "buttons locked"] },
-  { id: 143, description: "Cleaning completed", searches: ["cleaning completed", "done cleaning", "finished"] },
-  { id: 148, description: "Return to base for self-cleaning", searches: ["self cleaning", "return to base"] },
-  { id: 154, description: "Operated too frequently", searches: ["too often", "try again later"] },
-  { id: 155, description: "Return to charging and mop dock", searches: ["charging dock", "return to dock"] },
-  { id: 177, description: "Leaving base station", searches: ["leaving", "base station"] },
-  { id: 188, description: "Automatic docking engaged", searches: ["docking", "automatic docking"] },
-  { id: 200, description: "Shutdown sound", searches: ["goodbye", "shutting down"] },
-  { id: 274, description: "Ding sound", searches: ["ding"], clipSeconds: 1.8 },
+  { id: 0, description: "Startup sound", curatedSearches: ["you forgot to say hello"], searches: ["hello", "wake up"] },
+  { id: 7, description: "Start cleaning", curatedSearches: ["you need to clean up that yard", "finish up that mopping"], searches: ["start cleaning", "cleaning"] },
+  { id: 8, description: "Start spot cleaning", curatedSearches: ["hole in your front yard", "come to my front"], searches: ["spot cleaning", "spot"] },
+  { id: 11, description: "Paused", curatedSearches: ["one last chance to gain control"], searches: ["hang on", "wait a minute", "paused"], clipSeconds: 3.0 },
+  { id: 12, description: "Cleaning task completed", curatedSearches: ["have a whatever day"], searches: ["done", "finished", "completed"] },
+  { id: 13, description: "Returning to the dock to charge", curatedSearches: ["go back then to where you came from", "go back"], searches: ["return to the dock", "charging", "go back"] },
+  { id: 14, description: "Low battery, returning to dock", curatedSearches: ["take the charge off", "change the battery right away"], searches: ["low battery", "charging"] },
+  { id: 18, description: "Charging", curatedSearches: ["there's no charge for it", "take the charge off"], searches: ["charging"], clipSeconds: 3.0 },
+  { id: 20, description: "Low battery", curatedSearches: ["always change the battery", "battery powered"], searches: ["battery", "low battery"], clipSeconds: 3.2 },
+  { id: 22, description: "Move robot to area to clean", curatedSearches: ["clean up that yard", "front yard"], searches: ["clean this", "go over there", "cleaning"] },
+  { id: 23, description: "Water tank installed", curatedSearches: ["water is going all over the floor", "black goopy stuff"], searches: ["water tank", "water"] },
+  { id: 34, description: "Dustbin not installed", curatedSearches: ["trash cans", "pile of trash"], searches: ["trash", "garbage", "dust"] },
+  { id: 35, description: "Main brush error", curatedSearches: ["who eats toothbrushes", "toothbrushes"], searches: ["brush", "clean brush"] },
+  { id: 40, description: "Robot stuck", curatedSearches: ["pile of trash", "beeping and making these worrying sounds"], searches: ["stuck", "I'm stuck"] },
+  { id: 44, description: "Generic error", curatedSearches: ["one last chance to gain control", "wrong with your sound"], searches: ["error", "problem"] },
+  { id: 45, description: "I am here", curatedSearches: ["here I am I'm back", "here I am"], searches: ["I am here", "over here"], clipSeconds: 2.8 },
+  { id: 47, description: "Start charging", curatedSearches: ["there's no charge for it", "take the charge off"], searches: ["start charging", "charging"] },
+  { id: 50, description: "Charging error", curatedSearches: ["you will be charged two hundred dollars", "take the charge off"], searches: ["charging error", "clean contacts", "charging"] },
+  { id: 56, description: "Start selected room cleaning", curatedSearches: ["what floor are you on", "which apartment"], searches: ["room cleaning", "cleaning room"] },
+  { id: 57, description: "Start zoned cleaning", curatedSearches: ["front yard", "which apartment"], searches: ["zone", "area"] },
+  { id: 59, description: "Mopping completed", curatedSearches: ["that area that I was mopping it got really clean"], searches: ["mopping completed", "done mopping", "mop"] },
+  { id: 61, description: "Start mopping", curatedSearches: ["finish up that mopping", "pretty mouth"], searches: ["mopping", "mop"] },
+  { id: 63, description: "Water tank removed", curatedSearches: ["stop flushing the toilet", "water is going all over the floor"], searches: ["water tank", "remove water"] },
+  { id: 66, description: "Filter worn out", curatedSearches: ["filtering service", "mailboxes in the neighborhood"], searches: ["filter", "replace filter"] },
+  { id: 69, description: "Cleanup path blocked", curatedSearches: ["blocked by trees", "blocked my number"], searches: ["blocked", "path blocked"] },
+  { id: 70, description: "Remove and clean mop pad", curatedSearches: ["finish up that mopping", "mop bucket"], searches: ["mop pad", "remove mop", "clean mop"] },
+  { id: 82, description: "Start mapping", curatedSearches: ["mapping up the whole store", "google maps"], searches: ["mapping", "map"] },
+  { id: 84, description: "Mapping completed", curatedSearches: ["google maps is not letting me see them", "google maps"], searches: ["map complete", "completed map", "map"] },
+  { id: 88, description: "Enter remote control mode", curatedSearches: ["we have cameras", "camera in the rooms"], searches: ["remote control"] },
+  { id: 91, description: "Clean water tank not installed", curatedSearches: ["not enough water", "water keeps going on the floor"], searches: ["clean water tank", "water tank"] },
+  { id: 93, description: "Not enough clean water", curatedSearches: ["not enough water", "black goopy stuff"], searches: ["not enough water", "water"] },
+  { id: 94, description: "Dirty water tank full", curatedSearches: ["black goopy stuff", "water is going all over the floor"], searches: ["dirty water", "tank full"] },
+  { id: 98, description: "Dust collection bag full", curatedSearches: ["trash cans", "pile of trash"], searches: ["bag full", "empty bag"] },
+  { id: 106, description: "Start cleaning the mop", curatedSearches: ["finish up that mopping", "that area that I was mopping it got really clean"], searches: ["washing", "mop"] },
+  { id: 110, description: "Start auto empty", curatedSearches: ["empty bottles of water", "toilet valve"], searches: ["auto empty", "emptying"] },
+  { id: 116, description: "Child lock on", curatedSearches: ["locked up for the night", "you don't even know how a door works"], searches: ["locked", "buttons locked"] },
+  { id: 143, description: "Cleaning completed", curatedSearches: ["have a whatever day", "stay out of my life"], searches: ["cleaning completed", "done cleaning", "finished"] },
+  { id: 148, description: "Return to base for self-cleaning", curatedSearches: ["finish up that mopping", "have a whatever day"], searches: ["self cleaning", "return to base"] },
+  { id: 154, description: "Operated too frequently", curatedSearches: ["you're so good at conversation", "please try again later"], searches: ["too often", "try again later"] },
+  { id: 155, description: "Return to charging and mop dock", curatedSearches: ["go back to listening to dingtember", "take the charge off"], searches: ["charging dock", "return to dock"] },
+  { id: 177, description: "Leaving base station", curatedSearches: ["come to my front", "front yard"], searches: ["leaving", "base station"] },
+  { id: 188, description: "Automatic docking engaged", curatedSearches: ["docking section", "space station"], searches: ["docking", "automatic docking"] },
+  { id: 200, description: "Shutdown sound", curatedSearches: ["I love you bye", "have a whatever day", "stay out of my life"], searches: ["goodbye", "shutting down"] },
+  { id: 274, description: "Ding sound", curatedSearches: ["happy dingtember", "dinged your car"], searches: ["ding"], clipSeconds: 1.8 },
 ];
 
 export function formatTimestamp(seconds) {
@@ -163,7 +163,10 @@ export function scoreCandidate(candidate, slot, options = {}) {
   if (words > 20) score -= Math.min(20, words - 20);
   if (words < 5) score -= 12;
 
-  for (const search of slot.searches || []) {
+  const curatedSearches = slot.curatedSearches || [];
+  if (curatedSearches.includes(candidate.search)) score += 95;
+
+  for (const search of [...curatedSearches, ...(slot.searches || [])]) {
     const terms = String(search).toLowerCase().split(/\s+/).filter((term) => term.length > 2);
     for (const term of terms) {
       if (text.includes(term)) score += 5;
@@ -211,7 +214,8 @@ export async function findSlotQuote(slot, options = {}) {
   const allCandidates = [];
   const seen = new Set();
 
-  const searches = options.bradLikely === false ? slot.searches || [] : [...(slot.searches || []), ...GLOBAL_BRAD_SEARCHES];
+  const slotSearches = [...(slot.curatedSearches || []), ...(slot.searches || [])];
+  const searches = [...new Set(options.bradLikely === false ? slotSearches : [...slotSearches, ...GLOBAL_BRAD_SEARCHES])];
 
   for (const search of searches) {
     const results = await searchQuotes(search, options);
@@ -597,6 +601,7 @@ Options:
   --clip-seconds <number>   Default clip length. Default: ${DEFAULT_CLIP_SECONDS}
   --direct-only             Use only Prankcast/notla direct-audio sources.
   --prefer-youtube          Prefer YouTube matches. Requires yt-dlp for download.
+  --yt-remote-components    Allow yt-dlp to use its remote JS challenge solver.
   --allow-explicit          Disable the default transcript blocklist.
   --patreon                 Include Patreon transcript hits in searches.
   --no-package              Leave numbered OGG files unpacked.
