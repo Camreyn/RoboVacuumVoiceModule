@@ -182,6 +182,31 @@ describe("local Dreame API integration", () => {
     );
   });
 
+  it("sends the voice command when explicitly requested by upload form", async () => {
+    const fakeClient = {
+      login: async () => ({ status: "authenticated" }),
+      getVoiceProperties: vi.fn(async () => ({ properties: { voice_change_status: "ready" } })),
+      sendVoiceInstallCommand: vi.fn(async () => [{ code: 0 }]),
+    };
+
+    await withServer(
+      {
+        clientFactory: () => fakeClient,
+        publicFileBaseUrl: "http://192.168.1.50:8787",
+      },
+      async ({ baseUrl }) => {
+        const cookie = await loginCookie(baseUrl);
+        const response = await uploadVoicePack(baseUrl, cookie, { send: true });
+        const payload = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(payload.success).toBe(true);
+        expect(payload.status).toBe("sent");
+        expect(payload.diagnostics.mode).toBe("send");
+        expect(fakeClient.sendVoiceInstallCommand).toHaveBeenCalledTimes(1);
+      },
+    );
+  });
   it("sends the voice command only when send mode is enabled", async () => {
     const fakeClient = {
       login: async () => ({ status: "authenticated" }),
@@ -247,9 +272,10 @@ function postJson(url, body, cookie = "") {
   });
 }
 
-function uploadVoicePack(baseUrl, cookie) {
+function uploadVoicePack(baseUrl, cookie, options = {}) {
   const form = new FormData();
   form.set("file", new File(["hello"], "voice.pkg"));
+  if (options.send) form.set("mode", "send");
   return fetch(`${baseUrl}/api/devices/107265/voice-pack`, {
     method: "POST",
     headers: { cookie, origin },

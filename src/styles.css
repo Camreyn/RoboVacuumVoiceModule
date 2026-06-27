@@ -333,6 +333,28 @@ h2 {
   width: 100%;
 }
 
+.send-toggle {
+  align-items: center;
+  background: #fff8f2;
+  border: 1px solid #e0c3a7;
+  border-radius: 8px;
+  color: #57331f;
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+}
+
+.send-toggle input {
+  box-shadow: none;
+  flex: 0 0 auto;
+  height: 18px;
+  margin: 0;
+  width: 18px;
+}
+
+.send-toggle span {
+  overflow-wrap: anywhere;
+}
 .install-summary {
   display: grid;
   gap: 8px;

@@ -106,12 +106,13 @@ async function routeRequest(req, res, config) {
     const formRequest = await toWebRequest(req);
     const form = await formRequest.formData();
     const file = form.get("file");
+    const requestedSend = optionalString(form.get("mode")) === "send" || optionalString(form.get("send")) === "true";
 
     if (!(file instanceof File)) throw new HttpError("Voice-pack file is required.", 400);
 
     const baseUrl = publicBaseUrl(req, config.publicFileBaseUrl);
     const record = await persistVoicePack(file, baseUrl);
-    const shouldSend = shouldSendMode(config);
+    const shouldSend = shouldSendMode(config) || requestedSend;
     const before = await client.getVoiceProperties(deviceId).catch((error) => ({ message: error.message }));
     const command = createVoiceInstallPayload(record);
     const job = {
@@ -144,7 +145,7 @@ async function routeRequest(req, res, config) {
         jobId: job.id,
         message: shouldSend
           ? "Voice-pack install command sent."
-          : "Voice pack is prepared. Set DREAME_VOICE_INSTALL_MODE=send after confirming the X40 payload.",
+          : "Voice pack is prepared. Check Send to vacuum when you are ready to issue the X40 command.",
         ...job,
       },
       200,

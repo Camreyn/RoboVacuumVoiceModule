@@ -51,6 +51,7 @@ export function App() {
   const [voiceStatus, setVoiceStatus] = useState<VoicePropertiesResponse | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [installResult, setInstallResult] = useState<InstallResult | null>(null);
+  const [sendOnUpload, setSendOnUpload] = useState(false);
   const [status, setStatus] = useState<Status>({ tone: "neutral", text: "Ready" });
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [apiBaseUrl, setApiBaseUrlState] = useState<string>(() => getApiBaseUrl());
@@ -181,7 +182,7 @@ export function App() {
     }
 
     await runAction("install", async () => {
-      const result = await installVoicePack(selectedDeviceId, file);
+      const result = await installVoicePack(selectedDeviceId, file, { send: sendOnUpload });
       setInstallResult(result);
       setVoiceStatus(result.after || result.before || null);
       setStatus({ tone: result.success ? "success" : "neutral", text: result.message });
@@ -365,9 +366,17 @@ export function App() {
               <span>{file.type || "binary"}</span>
             </div>
           ) : null}
+          <label className="send-toggle">
+            <input
+              checked={sendOnUpload}
+              onChange={(event) => setSendOnUpload(event.target.checked)}
+              type="checkbox"
+            />
+            <span>Send command to vacuum after preparing</span>
+          </label>
           <button className="primary-wide" disabled={!isAuthenticated || !selectedDeviceId || !file || busyAction === "install"} onClick={handleInstall} type="button">
             <Send aria-hidden="true" />
-            Prepare pack
+            {sendOnUpload ? "Send pack" : "Prepare pack"}
           </button>
           {installResult ? <InstallSummary result={installResult} /> : null}
         </section>

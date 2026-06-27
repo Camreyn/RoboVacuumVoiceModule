@@ -141,9 +141,10 @@ export async function getVoiceProperties(deviceId: string): Promise<VoicePropert
   return request<VoicePropertiesResponse>(`/api/devices/${encodeURIComponent(deviceId)}/properties`);
 }
 
-export async function installVoicePack(deviceId: string, file: File): Promise<InstallResult> {
+export async function installVoicePack(deviceId: string, file: File, options: { send?: boolean } = {}): Promise<InstallResult> {
   const form = new FormData();
   form.set("file", file);
+  if (options.send) form.set("mode", "send");
 
   return request<InstallResult>(`/api/devices/${encodeURIComponent(deviceId)}/voice-pack`, {
     method: "POST",
