@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog } from "electron";
+import { app, BrowserWindow, dialog, Menu } from "electron";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -88,6 +88,7 @@ async function startUi() {
 }
 
 async function createWindow() {
+  Menu.setApplicationMenu(null);
   const actualApiPort = await startApi();
   const uiPort = await startUi();
 

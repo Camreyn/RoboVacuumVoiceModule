@@ -69,20 +69,28 @@ const API_BASE_STORAGE_KEY = "dreame-api-base-url";
 const SESSION_STORAGE_KEY = "dreame-local-session";
 const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8787";
 
+function normalizeApiBaseUrl(value: string): string {
+  return value.trim().replace(/\/$/, "");
+}
+
 export function getApiBaseUrl(): string {
   const queryApiBase = new URLSearchParams(window.location.search).get("apiBase");
-  if (queryApiBase) return setApiBaseUrl(queryApiBase);
-  return (window.localStorage.getItem(API_BASE_STORAGE_KEY) || DEFAULT_API_BASE).replace(/\/$/, "");
+  if (queryApiBase) {
+    const normalized = normalizeApiBaseUrl(queryApiBase);
+    window.localStorage.setItem(API_BASE_STORAGE_KEY, normalized);
+    return normalized;
+  }
+  return normalizeApiBaseUrl(window.localStorage.getItem(API_BASE_STORAGE_KEY) || DEFAULT_API_BASE);
 }
 
 export function setApiBaseUrl(value: string): string {
-  const normalized = value.trim().replace(/\/$/, "");
+  const normalized = normalizeApiBaseUrl(value);
   if (normalized) {
     window.localStorage.setItem(API_BASE_STORAGE_KEY, normalized);
-  } else {
-    window.localStorage.removeItem(API_BASE_STORAGE_KEY);
+    return normalized;
   }
-  return getApiBaseUrl();
+  window.localStorage.removeItem(API_BASE_STORAGE_KEY);
+  return normalizeApiBaseUrl(DEFAULT_API_BASE);
 }
 
 export function getLocalSessionId(): string {
