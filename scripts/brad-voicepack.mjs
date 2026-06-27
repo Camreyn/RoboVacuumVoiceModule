@@ -9,6 +9,11 @@ const REFERENCE_REPO_URL = "https://github.com/Makers-Im-Zigerschlitz/voicepacks
 const DEFAULT_OUT_DIR = ".generated/brad-x40";
 const DEFAULT_QUERY_LIMIT = 25;
 const DEFAULT_CLIP_SECONDS = 3.8;
+const DEFAULT_PREROLL_SECONDS = 0.55;
+const DEFAULT_POSTROLL_SECONDS = 0.8;
+const DEFAULT_MAX_CLIP_SECONDS = 8.5;
+const DEFAULT_SILENCE_DURATION = 0.28;
+const DEFAULT_SILENCE_THRESHOLD = -38;
 const DIRECT_AUDIO_TYPES = new Set(["prankcast", "notla"]);
 const BRAD_SOURCE_TITLE_PATTERNS = [
   /\bbrad\b/i,
@@ -282,6 +287,10 @@ async function buildPack(options) {
     tools,
     options: {
       clipSeconds: options.clipSeconds,
+      prerollSeconds: options.prerollSeconds ?? DEFAULT_PREROLL_SECONDS,
+      postrollSeconds: options.postrollSeconds ?? DEFAULT_POSTROLL_SECONDS,
+      maxClipSeconds: options.maxClipSeconds ?? DEFAULT_MAX_CLIP_SECONDS,
+      silenceTrim: options.silenceTrim !== false,
       directOnly: usableOptions.directOnly,
       allowExplicit: Boolean(options.allowExplicit),
       patreon: Boolean(options.patreon),
@@ -319,7 +328,7 @@ async function buildPack(options) {
       if (!tools.ffmpeg) throw new Error("ffmpeg is required to cut and normalize clips.");
       const outputPath = join(clipsDir, `${slot.id}.ogg`);
       try {
-        await createClip(result.selected, outputPath, slot, options, tools);
+        clip.clipWindow = await createClip(result.selected, outputPath, slot, options, tools);
         clip.status = "created";
         clip.outputPath = outputPath;
       } catch (error) {
@@ -348,20 +357,29 @@ async function buildPack(options) {
 }
 
 async function createClip(candidate, outputPath, slot, options, tools) {
-  const clipSeconds = Number(slot.clipSeconds || options.clipSeconds || DEFAULT_CLIP_SECONDS);
-  const preroll = Number(options.prerollSeconds ?? 0.2);
-  const start = Math.max(0, Number(candidate.seconds) - preroll);
-  const duration = Math.max(0.6, clipSeconds + preroll);
-  const source = await mediaInput(candidate, tools, { start, duration, cacheDir: join(dirname(outputPath), "..", "source-cache") });
-  const inputArgs = ["-i", source.url];
-  const fadeOutStart = Math.max(0, duration - 0.18).toFixed(2);
-  const filters = [
-    "highpass=f=90",
-    "lowpass=f=7600",
-    "loudnorm=I=-16:TP=-1.5:LRA=11",
-    "afade=t=in:st=0:d=0.04",
-    `afade=t=out:st=${fadeOutStart}:d=0.18`,
-  ].join(",");
+  const timing = estimateClipTiming(candidate, slot, options);
+  const source = await mediaInput(candidate, tools, {
+    start: timing.start,
+    duration: timing.scanDuration,
+    cacheDir: join(dirname(outputPath), "..", "source-cache"),
+  });
+
+  let duration = timing.scanDuration;
+  let trimStrategy = "estimated-transcript-window";
+  if (options.silenceTrim !== false) {
+    try {
+      const silenceStarts = await detectSilenceStarts(source.url, timing.start, timing.scanDuration, options);
+      const naturalDuration = chooseNaturalClipDuration(silenceStarts, timing.minDuration, timing.scanDuration, options);
+      if (naturalDuration < timing.scanDuration) {
+        duration = naturalDuration;
+        trimStrategy = "silence-aware";
+      }
+    } catch (error) {
+      console.warn("silence scan failed for " + outputPath + ": " + (error instanceof Error ? error.message : error));
+    }
+  }
+
+  const filters = audioFilters(duration);
 
   await run("ffmpeg", [
     "-hide_banner",
@@ -369,10 +387,11 @@ async function createClip(candidate, outputPath, slot, options, tools) {
     "error",
     "-y",
     "-ss",
-    start.toFixed(2),
+    timing.start.toFixed(2),
     "-err_detect",
     "ignore_err",
-    ...inputArgs,
+    "-i",
+    source.url,
     "-t",
     duration.toFixed(2),
     "-vn",
@@ -388,7 +407,90 @@ async function createClip(candidate, outputPath, slot, options, tools) {
   ]);
 
   const outputStat = await stat(outputPath);
-  if (outputStat.size < 1024) throw new Error(`Generated clip ${outputPath} is too small to be valid.`);
+  if (outputStat.size < 1024) throw new Error("Generated clip " + outputPath + " is too small to be valid.");
+
+  return {
+    strategy: trimStrategy,
+    start: Number(timing.start.toFixed(2)),
+    duration: Number(duration.toFixed(2)),
+    scanDuration: Number(timing.scanDuration.toFixed(2)),
+    minDuration: Number(timing.minDuration.toFixed(2)),
+    wordCount: timing.wordCount,
+  };
+}
+
+export function estimateClipTiming(candidate, slot = {}, options = {}) {
+  const baseClipSeconds = Number(slot.clipSeconds || options.clipSeconds || DEFAULT_CLIP_SECONDS);
+  const preroll = Number(options.prerollSeconds ?? DEFAULT_PREROLL_SECONDS);
+  const postroll = Number(options.postrollSeconds ?? DEFAULT_POSTROLL_SECONDS);
+  const maxClipSeconds = Number(options.maxClipSeconds ?? DEFAULT_MAX_CLIP_SECONDS);
+  const wordCount = transcriptWordCount(candidate);
+  const estimatedSpeechSeconds = slot.clipSeconds && baseClipSeconds <= 2.5 ? baseClipSeconds : Math.max(baseClipSeconds, wordCount * 0.31 + 0.75);
+  const scanDuration = clamp(preroll + estimatedSpeechSeconds + postroll, Math.max(0.6, baseClipSeconds + preroll), maxClipSeconds);
+  const minDuration = clamp(preroll + Math.max(baseClipSeconds, estimatedSpeechSeconds * 0.72), 0.6, scanDuration);
+
+  return {
+    start: Math.max(0, Number(candidate.seconds) - preroll),
+    scanDuration,
+    minDuration,
+    wordCount,
+  };
+}
+
+export function transcriptWordCount(candidate) {
+  return String((candidate.prefix || "") + " " + (candidate.preview || ""))
+    .toLowerCase()
+    .replace(/[^a-z0-9' ]/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length > 0)
+    .slice(0, 24)
+    .length;
+}
+
+export function chooseNaturalClipDuration(silenceStarts, minDuration, scanDuration, options = {}) {
+  const postroll = Number(options.postrollSeconds ?? DEFAULT_POSTROLL_SECONDS);
+  const tailPadding = Math.min(0.18, Math.max(0.05, postroll / 5));
+  const naturalEnd = silenceStarts.find((seconds) => seconds >= minDuration && seconds <= scanDuration - 0.08);
+  return naturalEnd === undefined ? scanDuration : Math.min(scanDuration, naturalEnd + tailPadding);
+}
+
+async function detectSilenceStarts(inputUrl, start, duration, options = {}) {
+  const threshold = Number(options.silenceThreshold ?? DEFAULT_SILENCE_THRESHOLD);
+  const silenceDuration = Number(options.silenceDuration ?? DEFAULT_SILENCE_DURATION);
+  const output = await runCapture("ffmpeg", [
+    "-hide_banner",
+    "-nostats",
+    "-ss",
+    start.toFixed(2),
+    "-err_detect",
+    "ignore_err",
+    "-i",
+    inputUrl,
+    "-t",
+    duration.toFixed(2),
+    "-af",
+    "silencedetect=n=" + threshold + "dB:d=" + silenceDuration,
+    "-f",
+    "null",
+    "-",
+  ]);
+
+  return [...output.matchAll(/silence_start:\s*([0-9.]+)/g)].map((match) => Number(match[1])).filter(Number.isFinite);
+}
+
+function audioFilters(duration) {
+  const fadeOutStart = Math.max(0, duration - 0.18).toFixed(2);
+  return [
+    "highpass=f=90",
+    "lowpass=f=7600",
+    "loudnorm=I=-16:TP=-1.5:LRA=11",
+    "afade=t=in:st=0:d=0.04",
+    "afade=t=out:st=" + fadeOutStart + ":d=0.18",
+  ].join(",");
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 async function mediaInput(candidate, tools, options = {}) {
@@ -525,7 +627,7 @@ function runCapture(command, args) {
     });
     child.on("error", reject);
     child.on("exit", (code) => {
-      if (code === 0) resolvePromise(stdout);
+      if (code === 0) resolvePromise(stdout + "\n" + stderr);
       else reject(new Error(`${command} exited with code ${code}: ${stderr}`));
     });
   });
@@ -567,6 +669,11 @@ function parseArgs(argv) {
     else if (arg === "--query-limit") options.queryLimit = Number(next());
     else if (arg === "--clip-seconds") options.clipSeconds = Number(next());
     else if (arg === "--preroll-seconds") options.prerollSeconds = Number(next());
+    else if (arg === "--postroll-seconds") options.postrollSeconds = Number(next());
+    else if (arg === "--max-clip-seconds") options.maxClipSeconds = Number(next());
+    else if (arg === "--silence-threshold") options.silenceThreshold = Number(next());
+    else if (arg === "--silence-duration") options.silenceDuration = Number(next());
+    else if (arg === "--no-silence-trim") options.silenceTrim = false;
     else if (arg === "--direct-only") options.directOnly = true;
     else if (arg === "--prefer-youtube") options.preferYoutube = true;
     else if (arg === "--include-prankcast") options.includePrankcast = true;
@@ -598,7 +705,11 @@ Options:
   --sound-ids <ids>         Comma-separated sound IDs, for example 7,13,18.
   --max-slots <number>      Process only the first N configured X40 slots.
   --query-limit <number>    Results to inspect per search term. Default: ${DEFAULT_QUERY_LIMIT}
-  --clip-seconds <number>   Default clip length. Default: ${DEFAULT_CLIP_SECONDS}
+  --clip-seconds <number>   Minimum speech window. Default: ${DEFAULT_CLIP_SECONDS}
+  --preroll-seconds <n>     Seconds to include before transcript hit. Default: ${DEFAULT_PREROLL_SECONDS}
+  --postroll-seconds <n>    Extra tail used while finding a natural stop. Default: ${DEFAULT_POSTROLL_SECONDS}
+  --max-clip-seconds <n>    Maximum generated clip length. Default: ${DEFAULT_MAX_CLIP_SECONDS}
+  --no-silence-trim         Disable natural-stop detection and use transcript estimate only.
   --direct-only             Use only Prankcast/notla direct-audio sources.
   --prefer-youtube          Prefer YouTube matches. Requires yt-dlp for download.
   --yt-remote-components    Allow yt-dlp to use its remote JS challenge solver.

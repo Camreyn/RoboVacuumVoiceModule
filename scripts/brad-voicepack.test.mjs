@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   chooseBestCandidate,
+  chooseNaturalClipDuration,
+  estimateClipTiming,
   formatTimestamp,
   hasBlockedTerms,
   isBradLikelyCandidate,
@@ -48,5 +50,23 @@ describe("Brad voice-pack helpers", () => {
     expect(isBradLikelyCandidate(brad)).toBe(true);
     expect(chooseBestCandidate([ivr], slot)).toBeNull();
     expect(chooseBestCandidate([ivr], slot, { bradLikely: false, includePrankcast: true })?.remoteId).toBe("1");
+  });
+
+  it("estimates longer clip windows from transcript words", () => {
+    const shortClip = estimateClipTiming({ seconds: 10, preview: "hello there" }, {}, { prerollSeconds: 0.5, postrollSeconds: 0.5 });
+    const longClip = estimateClipTiming(
+      { seconds: 10, preview: "this is a longer sentence with enough words that a fixed short cut would chop off the ending badly" },
+      {},
+      { prerollSeconds: 0.5, postrollSeconds: 0.5 },
+    );
+
+    expect(shortClip.start).toBe(9.5);
+    expect(longClip.scanDuration).toBeGreaterThan(shortClip.scanDuration);
+    expect(longClip.scanDuration).toBeLessThanOrEqual(8.5);
+  });
+
+  it("chooses the first silence after the minimum quote window", () => {
+    expect(chooseNaturalClipDuration([1.2, 3.1, 5.4], 3.0, 8.0, { postrollSeconds: 0.8 })).toBeCloseTo(3.26);
+    expect(chooseNaturalClipDuration([1.2, 2.0], 3.0, 8.0)).toBe(8.0);
   });
 });

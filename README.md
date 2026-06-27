@@ -128,12 +128,16 @@ Outputs are written under `.generated/brad-x40/`:
 - `source-manifest.csv`: spreadsheet-friendly review file.
 - `brad-x40.tar.gz`: upload this with the installer after reviewing the manifest.
 
+Clip timing is transcript-assisted and silence-aware by default: the builder estimates a longer window from the quote words, adds preroll/postroll, scans for nearby silence, and records the chosen `clipWindow` in `source-manifest.json`.
+
 Useful narrower runs:
 
 ```sh
 npm run build:brad-pack -- -- --sound-ids "7,13,18"
 npm run build:brad-pack -- -- --direct-only
 npm run build:brad-pack -- -- --prefer-youtube --yt-remote-components
+npm run build:brad-pack -- -- --max-clip-seconds 10 --preroll-seconds 0.7
+npm run build:brad-pack -- -- --no-silence-trim
 # Use the old broad transcript behavior only for manual research:
 npm run build:brad-pack -- -- --loose --include-prankcast
 ```
