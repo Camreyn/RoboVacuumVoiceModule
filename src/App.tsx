@@ -445,6 +445,18 @@ function InstallSummary({ result }: { result: InstallResult }) {
         <span>Job</span>
         <strong>{result.jobId}</strong>
       </div>
+      {result.fileName ? (
+        <div>
+          <span>Serving</span>
+          <strong>{result.fileName}</strong>
+        </div>
+      ) : null}
+      {result.diagnostics?.unwrappedFrom ? (
+        <div>
+          <span>Unwrapped</span>
+          <strong>{result.diagnostics.unwrappedFrom}</strong>
+        </div>
+      ) : null}
       {result.md5 ? (
         <div>
           <span>MD5</span>

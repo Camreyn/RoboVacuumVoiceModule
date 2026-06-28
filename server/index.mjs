@@ -6,6 +6,7 @@ import { networkInterfaces, tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
+import { inflateRawSync } from "node:zlib";
 
 const DEFAULT_PORT = Number(process.env.PORT || 8787);
 const DEFAULT_ORIGIN = process.env.ALLOWED_ORIGIN || "http://localhost:5173";
@@ -556,6 +557,9 @@ function createVoiceJobDiagnostics(req, record, baseUrl, sendMode) {
   return {
     mode: sendMode ? "send" : "discover",
     publicFileBaseUrl: baseUrl,
+    uploadedFileName: record.originalFileName,
+    servedFileName: record.fileName,
+    unwrappedFrom: record.unwrappedFrom || null,
     detectedLanIp: findLanIp() || null,
     requestHost: req.headers.host || null,
     fileUrl: record.url,
@@ -572,14 +576,84 @@ function createVoiceJobDiagnostics(req, record, baseUrl, sendMode) {
 
 async function persistVoicePack(file, baseUrl) {
   const jobId = randomBytes(8).toString("hex");
-  const fileName = sanitizeFileName(file.name || "voice-pack.pkg");
-  const bytes = Buffer.from(await file.arrayBuffer());
+  const originalFileName = sanitizeFileName(file.name || "voice-pack.pkg");
+  const uploadedBytes = Buffer.from(await file.arrayBuffer());
+  const normalized = normalizeVoicePackUpload(originalFileName, uploadedBytes);
+  const fileName = sanitizeFileName(normalized.fileName);
+  const bytes = normalized.bytes;
   const md5 = createHash("md5").update(bytes).digest("hex");
   const root = join(tmpdir(), "dreame-voice-packs", jobId);
   await mkdir(root, { recursive: true });
   const path = join(root, fileName);
   await writeFile(path, bytes);
-  return { jobId, fileName, path, md5, size: bytes.length, url: `${baseUrl}/packs/${jobId}/${encodeURIComponent(fileName)}` };
+  return {
+    jobId,
+    fileName,
+    originalFileName,
+    unwrappedFrom: normalized.unwrappedFrom,
+    path,
+    md5,
+    size: bytes.length,
+    url: baseUrl + "/packs/" + jobId + "/" + encodeURIComponent(fileName),
+  };
+}
+
+function normalizeVoicePackUpload(fileName, bytes) {
+  const safeName = sanitizeFileName(fileName || "voice-pack.pkg");
+  if (!safeName.toLowerCase().endsWith(".zip")) return { fileName: safeName, bytes };
+
+  const entry = extractVoiceArchiveFromZip(bytes);
+  if (!entry) throw new HttpError("ZIP uploads must contain exactly one .tar.gz or .tgz voice-pack archive.", 400);
+  return { fileName: sanitizeFileName(entry.fileName), bytes: entry.bytes, unwrappedFrom: safeName };
+}
+
+function extractVoiceArchiveFromZip(bytes) {
+  const eocdOffset = findEndOfCentralDirectory(bytes);
+  if (eocdOffset < 0) throw new HttpError("Uploaded ZIP file is invalid or truncated.", 400);
+
+  const entries = bytes.readUInt16LE(eocdOffset + 10);
+  const centralDirectoryOffset = bytes.readUInt32LE(eocdOffset + 16);
+  let offset = centralDirectoryOffset;
+  const matches = [];
+
+  for (let index = 0; index < entries; index += 1) {
+    if (bytes.readUInt32LE(offset) !== 0x02014b50) throw new HttpError("Uploaded ZIP central directory is invalid.", 400);
+    const method = bytes.readUInt16LE(offset + 10);
+    const compressedSize = bytes.readUInt32LE(offset + 20);
+    const uncompressedSize = bytes.readUInt32LE(offset + 24);
+    const fileNameLength = bytes.readUInt16LE(offset + 28);
+    const extraLength = bytes.readUInt16LE(offset + 30);
+    const commentLength = bytes.readUInt16LE(offset + 32);
+    const localHeaderOffset = bytes.readUInt32LE(offset + 42);
+    const entryName = bytes.subarray(offset + 46, offset + 46 + fileNameLength).toString("utf8").replace(/\\/g, "/");
+
+    if (!entryName.endsWith("/") && /(^|\/)[^/]+\.(tar\.gz|tgz)$/i.test(entryName)) {
+      matches.push({ entryName, method, compressedSize, uncompressedSize, localHeaderOffset });
+    }
+
+    offset += 46 + fileNameLength + extraLength + commentLength;
+  }
+
+  if (matches.length !== 1) return null;
+  const match = matches[0];
+  if (bytes.readUInt32LE(match.localHeaderOffset) !== 0x04034b50) throw new HttpError("Uploaded ZIP local file header is invalid.", 400);
+  const localFileNameLength = bytes.readUInt16LE(match.localHeaderOffset + 26);
+  const localExtraLength = bytes.readUInt16LE(match.localHeaderOffset + 28);
+  const dataOffset = match.localHeaderOffset + 30 + localFileNameLength + localExtraLength;
+  const compressed = bytes.subarray(dataOffset, dataOffset + match.compressedSize);
+  const extracted = match.method === 0 ? Buffer.from(compressed) : match.method === 8 ? inflateRawSync(compressed) : null;
+  if (!extracted) throw new HttpError("ZIP voice-pack archive uses an unsupported compression method.", 400);
+  if (match.uncompressedSize && extracted.length !== match.uncompressedSize) throw new HttpError("ZIP voice-pack archive size check failed.", 400);
+
+  return { fileName: basename(match.entryName), bytes: extracted };
+}
+
+function findEndOfCentralDirectory(bytes) {
+  const minOffset = Math.max(0, bytes.length - 65_557);
+  for (let offset = bytes.length - 22; offset >= minOffset; offset -= 1) {
+    if (bytes.readUInt32LE(offset) === 0x06054b50) return offset;
+  }
+  return -1;
 }
 
 async function servePack(res, jobId, fileName) {

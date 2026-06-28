@@ -48,6 +48,9 @@ export type VoiceJobDiagnostics = {
   robotFetchMethod?: string;
   readProperties?: Array<{ did: string; siid: number; piid: number; name: string }>;
   candidateWrite?: { method: string; siid: number; piid: number; valueType: string };
+  uploadedFileName?: string;
+  servedFileName?: string;
+  unwrappedFrom?: string | null;
 };
 
 export type VoiceTestAction = "charge" | "pause" | "stop";
@@ -65,6 +68,9 @@ export type InstallResult = {
   message: string;
   status?: string;
   fileUrl?: string;
+  fileName?: string;
+  originalFileName?: string;
+  unwrappedFrom?: string;
   md5?: string;
   size?: number;
   command?: unknown;

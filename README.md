@@ -121,6 +121,8 @@ Build a pack:
 npm run build:brad-pack
 ```
 
+The committed `artifacts/brad-x40-test.zip` is a review bundle. The installer now unwraps that ZIP automatically and serves the contained `brad-x40.tar.gz` to the robot; if you install manually elsewhere, use the inner `.tar.gz` file.
+
 Outputs are written under `.generated/brad-x40/`:
 
 - `clips/*.ogg`: numbered Dreame voice files such as `7.ogg` and `13.ogg`.

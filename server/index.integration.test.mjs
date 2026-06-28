@@ -209,6 +209,39 @@ describe("local Dreame API integration", () => {
     );
   });
 
+
+  it("unwraps zipped test artifacts before creating the Dreame install command", async () => {
+    const fakeClient = {
+      login: async () => ({ status: "authenticated" }),
+      getVoiceProperties: vi.fn(async () => ({ properties: { voice_packet_id: "old-custom" } })),
+      sendVoiceInstallCommand: vi.fn(),
+    };
+    const innerBytes = Buffer.from("inner voice archive");
+    const zipBytes = makeStoredZip("brad-x40.tar.gz", innerBytes);
+
+    await withServer(
+      {
+        clientFactory: () => fakeClient,
+        publicFileBaseUrl: "http://192.168.1.50:8787",
+      },
+      async ({ baseUrl }) => {
+        const cookie = await loginCookie(baseUrl);
+        const response = await uploadVoicePack(baseUrl, cookie, { file: new File([zipBytes], "brad-x40-test.zip") });
+        const payload = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(payload.fileName).toBe("brad-x40.tar.gz");
+        expect(payload.size).toBe(innerBytes.length);
+        expect(payload.md5).toBe("38d336fccb77bf7d6179efd7bf98c45e");
+        expect(payload.fileUrl).toMatch(/brad-x40\.tar\.gz$/);
+        expect(payload.diagnostics.unwrappedFrom).toBe("brad-x40-test.zip");
+        expect(payload.command).toEqual(expect.objectContaining({ name: "brad-x40.tar.gz", size: innerBytes.length }));
+
+        const served = await fetch(payload.fileUrl.replace("http://192.168.1.50:8787", baseUrl));
+        expect(Buffer.from(await served.arrayBuffer()).equals(innerBytes)).toBe(true);
+      },
+    );
+  });
   it("sends the voice command when explicitly requested by upload form", async () => {
     const fakeClient = {
       login: async () => ({ status: "authenticated" }),
@@ -301,11 +334,48 @@ function postJson(url, body, cookie = "") {
 
 function uploadVoicePack(baseUrl, cookie, options = {}) {
   const form = new FormData();
-  form.set("file", new File(["hello"], "voice.pkg"));
+  form.set("file", options.file || new File(["hello"], "voice.pkg"));
   if (options.send) form.set("mode", "send");
-  return fetch(`${baseUrl}/api/devices/107265/voice-pack`, {
+  return fetch(baseUrl + "/api/devices/107265/voice-pack", {
     method: "POST",
     headers: { cookie, origin },
     body: form,
   });
+}
+
+function makeStoredZip(fileName, payload) {
+  const name = Buffer.from(fileName);
+  const data = Buffer.from(payload);
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(20, 4);
+  local.writeUInt16LE(0, 6);
+  local.writeUInt16LE(0, 8);
+  local.writeUInt32LE(0, 14);
+  local.writeUInt32LE(data.length, 18);
+  local.writeUInt32LE(data.length, 22);
+  local.writeUInt16LE(name.length, 26);
+
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0);
+  central.writeUInt16LE(20, 4);
+  central.writeUInt16LE(20, 6);
+  central.writeUInt16LE(0, 8);
+  central.writeUInt16LE(0, 10);
+  central.writeUInt32LE(0, 16);
+  central.writeUInt32LE(data.length, 20);
+  central.writeUInt32LE(data.length, 24);
+  central.writeUInt16LE(name.length, 28);
+  central.writeUInt32LE(0, 42);
+
+  const centralOffset = local.length + name.length + data.length;
+  const centralSize = central.length + name.length;
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(1, 8);
+  eocd.writeUInt16LE(1, 10);
+  eocd.writeUInt32LE(centralSize, 12);
+  eocd.writeUInt32LE(centralOffset, 16);
+
+  return Buffer.concat([local, name, data, central, name, eocd]);
 }
